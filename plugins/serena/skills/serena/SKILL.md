@@ -75,17 +75,26 @@ If you catch yourself thinking ANY of these, STOP:
 
 ## Setup
 
-The CLI is at `~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena`. All commands are auto-accepted.
+Two CLI options available:
+
+| Script | Speed | Use Case |
+|--------|-------|----------|
+| `serena` | ~200ms | Full-featured Python client, recipes, stdin support |
+| `serena-fast` | ~90ms | Ultra-fast bash+jq wrapper, grouped output |
 
 ```bash
-# Option 1: Use full path
-~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena find Customer
+# Scripts location
+SERENA_DIR=~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts
 
-# Option 2: Create alias (add to ~/.bashrc or ~/.zshrc)
-alias serena='~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena'
+# Fast version (recommended for find/refs/overview)
+$SERENA_DIR/serena-fast find Customer
 
-# Option 3: Symlink to PATH
-ln -s ~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena ~/bin/serena
+# Full version (for recipes, complex operations)
+$SERENA_DIR/serena find Customer
+
+# Create aliases (add to ~/.bashrc or ~/.zshrc)
+alias serena='$SERENA_DIR/serena'
+alias sf='$SERENA_DIR/serena-fast'  # Quick alias for fast version
 ```
 
 ## Quick Reference (Cheat Sheet)
@@ -303,6 +312,57 @@ serena memory write debug_trace "## Call Chain: ..."
 | Edit by line number | `serena edit replace Symbol file.php` |
 | Generic Task/Explore agent | `serena` directly or `serena-explore` agent |
 
+## Performance Best Practices
+
+### Always Use --path for Speed
+
+LSP must search the entire indexed codebase without `--path`. Use path restriction:
+
+| Search | Time | Notes |
+|--------|------|-------|
+| `find Payment --path src/` | **0.7s** | Custom code only |
+| `find Payment --path vendor/mollie/` | **2-3s** | Specific vendor |
+| `find Payment --path vendor/oro/` | **5-10s** | Large framework |
+| `find Payment` (no path) | **28s+** | All indexed vendors |
+
+```bash
+# FAST: Always specify path when you know the scope
+serena-fast find Payment --kind class --path src/
+serena-fast find Payment --kind class --path vendor/mollie/
+
+# SLOW: Avoid searching entire codebase
+serena-fast find Payment --kind class  # Searches everything
+```
+
+### Vendor Exclusions
+
+Configure `.serena/project.yml` to exclude unneeded vendors:
+
+```yaml
+ignored_paths:
+  - "vendor/fakerphp"      # Test data generators
+  - "vendor/phpunit"       # Test framework
+  - "vendor/symfony"       # Use Oro's extensions instead
+  - "vendor/**/Tests"      # Test directories
+```
+
+Keep only what you need: `oro/*`, `mollie/*`, `meyer/*`, `netresearch/*`
+
+### serena-fast Grouped Output
+
+The fast CLI groups results by src/vendor and bundle:
+
+```
+=== src ===
+Meyer/PaymentBundle/
+  Class  PaymentController     Controller/:15
+  Class  PaymentService        Service/:20
+
+=== vendor ===
+mollie/orocommerce/
+  Class  MolliePayment         PaymentMethod/:12
+```
+
 ## Smart Search Strategy
 
 ### Progressive Search (Broad → Narrow)
@@ -310,10 +370,10 @@ serena memory write debug_trace "## Call Chain: ..."
 Start with broad patterns, narrow only if too many results:
 
 ```bash
-# GOOD: Start broad
-serena find Payment                     # Anything with "Payment"
+# GOOD: Start broad with path restriction
+serena find Payment --path src/         # Custom code first
 serena find Payment --kind class        # Only classes
-serena find Payment --path src/         # Only in src/
+serena find Payment                     # Full search if needed
 
 # BAD: Too specific (may fail during indexing)
 serena find PaymentMethodProviderInterface  # Very specific name

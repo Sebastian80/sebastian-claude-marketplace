@@ -22,7 +22,11 @@ You have access to LSP-powered semantic search. Use it.
 ## Serena CLI
 
 ```bash
-SERENA=~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena
+# Fast version (recommended) - grouped output, ~90ms overhead
+SERENA=~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena-fast
+
+# Full version (for recipes, stdin) - ~200ms overhead
+SERENA_FULL=~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena
 ```
 
 ## MANDATORY FIRST ACTION
@@ -30,7 +34,7 @@ SERENA=~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skill
 Before ANY exploration, run this health check:
 
 ```bash
-$SERENA status && $SERENA find Controller --kind class 2>&1 | head -5
+$SERENA status && $SERENA find Controller --kind class --path src/ 2>&1 | head -10
 ```
 
 **Did not run this first? STOP. Run it NOW.**
@@ -59,18 +63,39 @@ If you catch yourself thinking ANY of these, STOP. You are rationalizing.
 | "YAML configs need grep" | WRONG. Try `serena search` for YAML first. |
 | "Glob to find config files" | WRONG. Use `serena search --glob` pattern. |
 
+## Performance: Always Use --path
+
+LSP searches entire codebase without `--path`. Always specify scope:
+
+| Search | Time |
+|--------|------|
+| `--path src/` | **0.7s** |
+| `--path vendor/mollie/` | **2-3s** |
+| `--path vendor/oro/` | **5-10s** |
+| No path (full scan) | **28s+** |
+
+```bash
+# FAST: Specify path
+$SERENA find Payment --kind class --path src/
+$SERENA find Payment --kind class --path vendor/mollie/
+
+# SLOW: Avoid
+$SERENA find Payment --kind class  # Scans everything
+```
+
 ## Quick Reference
 
 | Task | Command |
 |------|---------|
-| Find class | `$SERENA find Customer --kind class --body` |
-| Find method | `$SERENA find calculate --kind method --body` |
-| Find interface | `$SERENA find Payment --kind interface` |
-| Who calls X? | `$SERENA find X` → `$SERENA refs "Class/method" file.php` |
+| Find class (fast) | `$SERENA find Customer --kind class --path src/` |
+| Find in vendor | `$SERENA find Payment --kind class --path vendor/oro/` |
+| Find method | `$SERENA find calculate --kind method --path src/` |
+| Find interface | `$SERENA find Payment --kind interface --path src/` |
+| Who calls X? | `$SERENA find X --path src/` → `$SERENA refs "Class/method" file.php` |
 | File structure | `$SERENA overview src/Entity/Customer.php` |
-| All entities | `$SERENA recipe entities` |
-| All controllers | `$SERENA recipe controllers` |
-| All listeners | `$SERENA recipe listeners` |
+| All entities | `$SERENA_FULL recipe entities` |
+| All controllers | `$SERENA_FULL recipe controllers` |
+| All listeners | `$SERENA_FULL recipe listeners` |
 | Regex pattern | `$SERENA search "pattern" --glob "src/**/*.php"` |
 
 ## The 3-Strike Rule
@@ -78,16 +103,16 @@ If you catch yourself thinking ANY of these, STOP. You are rationalizing.
 If Serena returns empty, broaden the pattern. Try 3 times before ANY fallback:
 
 ```bash
-# Strike 1: Specific
-$SERENA find PaymentMethodInterface --kind interface
+# Strike 1: Specific with path
+$SERENA find PaymentMethodInterface --kind interface --path src/
 # Empty? Broaden...
 
-# Strike 2: Shorter
-$SERENA find PaymentMethod --kind interface
-# Empty? Broaden more...
+# Strike 2: Shorter pattern
+$SERENA find PaymentMethod --kind interface --path src/
+# Empty? Expand to vendor...
 
-# Strike 3: Minimal
-$SERENA find Payment --kind interface
+# Strike 3: Minimal, include vendor
+$SERENA find Payment --kind interface --path vendor/oro/
 # Empty? NOW state why and fall back
 ```
 
@@ -130,8 +155,10 @@ grep -rn "MolliePaymentDecorator" --include="*.yml" src/
 ## Workflow: Find Class and Its Usages
 
 ```bash
-# 1. Find the class
-$SERENA find MolliePayment --kind class --body
+# 1. Find the class (start with src/, expand if needed)
+$SERENA find MolliePayment --kind class --path src/
+# If not found, try vendor:
+$SERENA find MolliePayment --kind class --path vendor/mollie/
 
 # 2. Get exact symbol path from output (e.g., MolliePayment)
 
@@ -146,7 +173,7 @@ $SERENA overview /path/to/caller.php
 
 ```bash
 # 1. Find the method
-$SERENA find calculatePrice --kind method
+$SERENA find calculatePrice --kind method --path src/
 
 # 2. Get symbol path (e.g., ShippingMethod/calculatePrice)
 

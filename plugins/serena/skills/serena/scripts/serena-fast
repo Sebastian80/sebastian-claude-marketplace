@@ -1,0 +1,355 @@
+#!/usr/bin/env bash
+# serena-fast: Ultra-fast Serena CLI with session persistence
+# Pure bash + jq (no Python) - ~12x faster than Python script
+#
+# Usage: serena-fast <command> [args]
+
+# Note: pipefail disabled because head -1 causes SIGPIPE
+
+SERENA_URL="${SERENA_URL:-http://localhost:9121/mcp}"
+SESSION_FILE="/tmp/serena-session-$(id -u)"
+REQ_ID=0
+
+# Initialize MCP session
+init_session() {
+  local HEADERS=$(mktemp)
+  local BODY=$(mktemp)
+
+  curl -s -D "$HEADERS" -o "$BODY" --max-time 5 -X POST "$SERENA_URL" \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json, text/event-stream" \
+    -d '{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"serena-fast","version":"2.0"}}}'
+
+  local SID=$(grep -i "mcp-session-id" "$HEADERS" 2>/dev/null | cut -d' ' -f2 | tr -d '\r\n')
+  rm -f "$HEADERS" "$BODY"
+
+  if [[ -z "$SID" ]]; then
+    echo "ERROR: Cannot connect to Serena at $SERENA_URL" >&2
+    return 1
+  fi
+
+  echo "$SID" > "$SESSION_FILE"
+
+  # Send initialized notification (must use Accept header for SSE)
+  curl -s -N --max-time 2 -X POST "$SERENA_URL" \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json, text/event-stream" \
+    -H "mcp-session-id: $SID" \
+    -d '{"jsonrpc":"2.0","method":"notifications/initialized"}' > /dev/null 2>&1
+
+  echo "$SID"
+}
+
+# Get or create session
+get_session() {
+  if [[ -f "$SESSION_FILE" ]]; then
+    cat "$SESSION_FILE"
+  else
+    init_session
+  fi
+}
+
+# Call MCP tool - returns raw JSON
+call_tool_raw() {
+  local TOOL="$1"
+  local ARGS="$2"
+  local SID=$(get_session)
+
+  [[ -z "$SID" ]] && return 1
+
+  REQ_ID=$((REQ_ID + 1))
+
+  # -N is critical for SSE streaming
+  timeout 120 curl -s -N -X POST "$SERENA_URL" \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json, text/event-stream" \
+    -H "mcp-session-id: $SID" \
+    -d "{\"jsonrpc\":\"2.0\",\"id\":$REQ_ID,\"method\":\"tools/call\",\"params\":{\"name\":\"$TOOL\",\"arguments\":$ARGS}}" 2>/dev/null \
+  | grep "^data: " | sed 's/^data: //' | head -1
+}
+
+# Call tool and format output with jq
+call_tool() {
+  local TOOL="$1"
+  local ARGS="$2"
+  local RAW=$(call_tool_raw "$TOOL" "$ARGS")
+
+  if [[ -z "$RAW" ]]; then
+    echo "ERROR: No response from Serena" >&2
+    return 1
+  fi
+
+  # Check for errors
+  local ERR=$(echo "$RAW" | jq -r '.error.message // empty' 2>/dev/null)
+  if [[ -n "$ERR" ]]; then
+    echo "Error: $ERR" >&2
+    return 1
+  fi
+
+  # Extract and format result (structuredContent.result is double-encoded JSON)
+  echo "$RAW" | jq -r '
+    .result // {} |
+    if .structuredContent.result then
+      .structuredContent.result | if type == "string" then fromjson? // . else . end
+    elif .structuredContent then
+      .structuredContent
+    elif .content then
+      [.content[] | select(.type == "text") | .text] | join("\n")
+    else
+      .
+    end
+  ' 2>/dev/null
+}
+
+# Format symbol results - grouped by src/vendor and bundle
+format_symbols() {
+  jq -r '
+    def pad($len): . + (" " * ($len - length)) | .[0:$len];
+    def get_bundle:
+      .relative_path | split("/") |
+      if .[0] == "vendor" then
+        # vendor/author/package/Bundle -> author/package/Bundle
+        .[1:4] | join("/")
+      else
+        # src/Meyer/Bundle -> Meyer/Bundle
+        .[1:3] | join("/")
+      end;
+    def get_root:
+      if .relative_path | startswith("vendor/") then "vendor" else "src" end;
+    def get_short_path:
+      .relative_path | split("/") | .[-2:] | join("/");
+
+    if type == "array" and length > 0 then
+      map(. + { root: get_root, bundle: get_bundle }) |
+      group_by(.root) | sort_by(.[0].root) | reverse |
+      .[] |
+      "\n\u001b[1;36m=== \(.[0].root) ===\u001b[0m",
+      (group_by(.bundle) | sort_by(.[0].bundle) | .[] |
+        "\u001b[33m\(.[0].bundle)/\u001b[0m",
+        (.[:12][] |
+          "  \(.kind | pad(10)) \(.name_path | pad(35)) \(get_short_path):\(.body_location.start_line // "?")"
+        )
+      )
+    elif type == "string" then
+      .
+    elif type == "array" then
+      "No results"
+    else
+      . | tostring
+    end
+  ' 2>/dev/null
+}
+
+# ============================================================================
+# Commands
+# ============================================================================
+
+cmd_find() {
+  local PATTERN="$1"
+  shift
+
+  local KIND="" PATH_ARG="" BODY="false" DEPTH="0"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --kind|-k) KIND="$2"; shift 2 ;;
+      --path|-p) PATH_ARG="$2"; shift 2 ;;
+      --body|-b) BODY="true"; shift ;;
+      --depth|-d) DEPTH="$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+
+  # Map kind names to LSP symbol kinds
+  local KIND_ARR=""
+  case "$KIND" in
+    namespace) KIND_ARR="[3]" ;;
+    class) KIND_ARR="[5]" ;;
+    method) KIND_ARR="[6]" ;;
+    property) KIND_ARR="[7]" ;;
+    interface) KIND_ARR="[11]" ;;
+    function) KIND_ARR="[12]" ;;
+    constant) KIND_ARR="[14]" ;;
+  esac
+
+  # Build arguments
+  local ARGS="{\"name_path_pattern\":\"$PATTERN\",\"substring_matching\":true,\"include_body\":$BODY,\"depth\":$DEPTH"
+  [[ -n "$KIND_ARR" ]] && ARGS="$ARGS,\"include_kinds\":$KIND_ARR"
+  [[ -n "$PATH_ARG" ]] && ARGS="$ARGS,\"relative_path\":\"$PATH_ARG\""
+  ARGS="$ARGS}"
+
+  call_tool "find_symbol" "$ARGS" | format_symbols
+}
+
+cmd_refs() {
+  local SYMBOL="$1"
+  local FILE="$2"
+
+  if [[ -z "$SYMBOL" ]] || [[ -z "$FILE" ]]; then
+    echo "Usage: serena-fast refs <Symbol/method> <file.php>" >&2
+    return 1
+  fi
+
+  call_tool "find_referencing_symbols" "{\"name_path\":\"$SYMBOL\",\"relative_path\":\"$FILE\"}" | jq -r '
+    if type == "array" then
+      .[] | "\(.relative_path):\(.body_location.start_line // "?")"
+    else
+      .
+    end
+  ' 2>/dev/null
+}
+
+cmd_overview() {
+  local FILE="$1"
+
+  if [[ -z "$FILE" ]]; then
+    echo "Usage: serena-fast overview <file.php>" >&2
+    return 1
+  fi
+
+  call_tool "get_symbols_overview" "{\"relative_path\":\"$FILE\"}" | jq -r '
+    if type == "array" then
+      .[] | "\(.kind_name // .kind) \(.name) :\(.start_line // "")"
+    else
+      .
+    end
+  ' 2>/dev/null
+}
+
+cmd_search() {
+  local PATTERN="$1"
+  shift
+
+  local PATH_ARG="" GLOB=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --path|-p) PATH_ARG="$2"; shift 2 ;;
+      --glob|-g) GLOB="$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+
+  local ARGS="{\"pattern\":\"$PATTERN\""
+  [[ -n "$PATH_ARG" ]] && ARGS="$ARGS,\"relative_path\":\"$PATH_ARG\""
+  [[ -n "$GLOB" ]] && ARGS="$ARGS,\"file_pattern\":\"$GLOB\""
+  ARGS="$ARGS}"
+
+  call_tool "search_for_pattern" "$ARGS"
+}
+
+cmd_memory() {
+  case "$1" in
+    list)
+      call_tool "list_memories" "{}"
+      ;;
+    read)
+      [[ -z "$2" ]] && { echo "Usage: serena-fast memory read <name>" >&2; return 1; }
+      call_tool "read_memory" "{\"name\":\"$2\"}"
+      ;;
+    write)
+      [[ -z "$2" ]] || [[ -z "$3" ]] && { echo "Usage: serena-fast memory write <name> <content>" >&2; return 1; }
+      call_tool "write_memory" "{\"name\":\"$2\",\"content\":\"$3\"}"
+      ;;
+    *)
+      echo "Usage: serena-fast memory [list|read <name>|write <name> <content>]" >&2
+      ;;
+  esac
+}
+
+cmd_status() {
+  call_tool "get_current_config" "{}"
+}
+
+cmd_activate() {
+  local PROJECT="${1:-$(pwd)}"
+  call_tool "activate_project" "{\"project\":\"$PROJECT\"}"
+}
+
+cmd_listdir() {
+  local PATH_ARG="${1:-.}"
+  call_tool "list_dir" "{\"relative_path\":\"$PATH_ARG\"}" | jq -r '.[]' 2>/dev/null
+}
+
+# ============================================================================
+# Main
+# ============================================================================
+
+case "${1:-}" in
+  --reset)
+    rm -f "$SESSION_FILE"
+    echo "Session reset"
+    ;;
+  --init)
+    rm -f "$SESSION_FILE"
+    SID=$(init_session)
+    echo "Session: $SID"
+    ;;
+  --raw)
+    # Raw mode for debugging
+    shift
+    call_tool_raw "$@"
+    ;;
+  find)
+    shift
+    cmd_find "$@"
+    ;;
+  refs)
+    shift
+    cmd_refs "$@"
+    ;;
+  overview)
+    shift
+    cmd_overview "$@"
+    ;;
+  search)
+    shift
+    cmd_search "$@"
+    ;;
+  memory)
+    shift
+    cmd_memory "$@"
+    ;;
+  status)
+    cmd_status
+    ;;
+  activate)
+    shift
+    cmd_activate "$@"
+    ;;
+  ls|listdir)
+    shift
+    cmd_listdir "$@"
+    ;;
+  ""|--help|-h)
+    cat << 'HELP'
+serena-fast v2.0: Ultra-fast Serena CLI (pure bash + jq)
+
+Commands:
+  find <pattern> [--kind class|method|interface] [--path dir] [--body] [--depth n]
+  refs <Symbol/method> <file.php>
+  overview <file.php>
+  search <regex> [--path dir] [--glob *.php]
+  memory [list|read <name>|write <name> <content>]
+  status
+  activate [path]
+  ls [path]
+  --reset    Clear session
+  --init     Force new session
+  --raw      Raw JSON output
+
+Examples:
+  serena-fast find Controller --kind class
+  serena-fast find Payment --path src/Meyer/
+  serena-fast find Customer --path vendor/oro/
+  serena-fast refs "Customer/getName" src/Entity/Customer.php
+  serena-fast overview src/Entity/Order.php
+  serena-fast search "implements.*Interface" --path src/
+  serena-fast memory list
+HELP
+    ;;
+  *)
+    echo "Unknown command: $1 (use --help)" >&2
+    exit 1
+    ;;
+esac
