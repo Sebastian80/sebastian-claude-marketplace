@@ -1,0 +1,19 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "sebastian-marketplace",
+  "version": "1.0.0",
+  "description": "Sebastian's private marketplace for Claude Code skills, plugins, agents, and tooling",
+  "owner": {
+    "name": "Sebastian",
+    "email": "sebastian@example.com"
+  },
+  "plugins": [
+    {
+      "name": "test-plugin",
+      "description": "Example plugin demonstrating all component types (skills, agents, commands, hooks, MCP)",
+      "version": "1.0.0",
+      "source": "./plugins/test-plugin",
+      "category": "development"
+    }
+  ]
+}
