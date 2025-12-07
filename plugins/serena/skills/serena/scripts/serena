@@ -114,27 +114,63 @@ class Output:
         if not self.json_mode:
             print(message, file=sys.stderr)
 
-    def _print_symbol(self, sym: dict):
-        """Pretty-print a symbol."""
+    def _print_symbol(self, sym: dict, indent: int = 0):
+        """Pretty-print a symbol with line ranges and children."""
         kind_map = {
-            3: "NS", 5: "Class", 6: "Method", 7: "Prop",
-            11: "Interface", 12: "Func", 14: "Const"
+            3: "ns", 5: "class", 6: "method", 7: "prop",
+            11: "iface", 12: "func", 13: "var", 14: "const",
+            "Class": "class", "Method": "method", "Interface": "iface",
+            "Function": "func", "Namespace": "ns", "Property": "prop",
+            "Variable": "var", "Constant": "const"
         }
         kind = sym.get("kind", "?")
-        kind_str = kind_map.get(kind, kind) if isinstance(kind, int) else kind
-        name = sym.get("name_path", "?")
+        kind_str = kind_map.get(kind, str(kind).lower() if isinstance(kind, str) else "?")
+        name = sym.get("name_path", sym.get("name", "?"))
         path = sym.get("relative_path", "")
         loc = sym.get("body_location", {})
-        line = loc.get("start_line", "?") if loc else "?"
+        start = loc.get("start_line", "?") if loc else "?"
+        end = loc.get("end_line") if loc else None
 
-        print(f"  [{kind_str:10}] {name}")
-        print(f"              {path}:{line}")
+        # Format line range
+        line_str = f"{start}-{end}" if end and end != start else str(start)
 
+        # Build prefix for indentation
+        prefix = "  " * indent
+
+        # Main symbol line: Name (kind) path:lines
+        print(f"{prefix}{name} ({kind_str}) {path}:{line_str}")
+
+        # Show body preview if present
         if "body" in sym and sym["body"]:
-            body_preview = sym["body"][:200].replace("\n", " ")
-            if len(sym["body"]) > 200:
-                body_preview += "..."
-            print(f"              {body_preview}")
+            body_lines = sym["body"].strip().split("\n")
+            # Show first 3 lines of body
+            for i, line in enumerate(body_lines[:3]):
+                line_preview = line[:80] + ("..." if len(line) > 80 else "")
+                print(f"{prefix}  {start + i}: {line_preview}")
+            if len(body_lines) > 3:
+                print(f"{prefix}  ... +{len(body_lines) - 3} more lines")
+
+        # Show children if present (methods of a class)
+        children = sym.get("children", [])
+        if children:
+            # Group by kind
+            methods = [c for c in children if c.get("kind") in [6, "Method"]]
+            props = [c for c in children if c.get("kind") in [7, "Property", "prop"]]
+            others = [c for c in children if c not in methods and c not in props]
+
+            if methods:
+                shown = 0
+                for child in methods[:5]:
+                    c_name = child.get("name", child.get("name_path", "?"))
+                    c_loc = child.get("body_location", {})
+                    c_start = c_loc.get("start_line", "?")
+                    c_end = c_loc.get("end_line")
+                    c_line = f"{c_start}-{c_end}" if c_end else str(c_start)
+                    connector = "├─" if shown < min(len(methods), 5) - 1 else "└─"
+                    print(f"{prefix}  {connector} {c_name}() :{c_line}")
+                    shown += 1
+                if len(methods) > 5:
+                    print(f"{prefix}     ... +{len(methods) - 5} more methods")
         print()
 
 
@@ -200,13 +236,111 @@ def cmd_refs(args, out: Output):
         out.error(f"No references found for '{args.symbol}'",
                   hint="Verify the symbol exists with 'serena find'")
 
-    out.success(result)
+    # JSON mode - output as-is
+    if out.json_mode:
+        out.success(result)
+        return
+
+    # Human-readable format with context and truncation
+    show_all = getattr(args, 'all', False)
+    max_refs = len(result) if show_all else 10
+
+    print(f"{len(result)} references to '{args.symbol}'\n")
+
+    # Group by file for cleaner output
+    by_file = {}
+    for ref in result:
+        path = ref.get("relative_path", "unknown")
+        if path not in by_file:
+            by_file[path] = []
+        by_file[path].append(ref)
+
+    shown_files = 0
+    for path, refs in list(by_file.items())[:max_refs]:
+        print(f"  {path}:")
+        for ref in refs[:3]:  # Max 3 refs per file in summary
+            loc = ref.get("body_location", {})
+            line = loc.get("start_line", "?")
+            ctx = ref.get("content_around_reference", "")
+            # Extract the highlighted line (line with >)
+            ctx_lines = [l.strip() for l in ctx.split('\n') if '>' in l[:5]]
+            ctx_short = ctx_lines[0][4:64] if ctx_lines else ""  # Skip "> " prefix
+            if ctx_short:
+                print(f"    :{line}  {ctx_short}")
+            else:
+                print(f"    :{line}")
+        if len(refs) > 3:
+            print(f"    ... +{len(refs) - 3} more in this file")
+        shown_files += 1
+
+    remaining = len(by_file) - shown_files
+    if remaining > 0:
+        print(f"\n  ... +{remaining} more files (use --all to show all)")
+    print()
 
 
 def cmd_overview(args, out: Output):
     """Get overview of symbols in a file."""
     result = parse_result(call("get_symbols_overview", relative_path=args.file))
-    out.success(result)
+
+    # JSON mode - output as-is
+    if out.json_mode:
+        out.success(result)
+        return
+
+    if not result:
+        out.error(f"No symbols found in '{args.file}'",
+                  hint="Check file path or wait for LSP indexing")
+
+    # Human-readable format grouped by kind
+    kind_map = {
+        3: "namespaces", 5: "classes", 6: "methods", 7: "properties",
+        11: "interfaces", 12: "functions", 13: "variables", 14: "constants"
+    }
+    kind_order = [5, 11, 12, 6, 7, 14, 13, 3]  # classes, interfaces, funcs, methods...
+
+    # Group symbols by kind
+    by_kind = {}
+    for sym in result:
+        kind = sym.get("kind", 0)
+        if kind not in by_kind:
+            by_kind[kind] = []
+        by_kind[kind].append(sym)
+
+    print(f"{args.file} ({len(result)} symbols)\n")
+
+    for kind in kind_order:
+        if kind not in by_kind:
+            continue
+        symbols = by_kind[kind]
+        kind_name = kind_map.get(kind, f"kind_{kind}")
+
+        # For classes/interfaces, show with line numbers
+        if kind in [5, 11]:
+            print(f"  {kind_name.upper()}:")
+            for sym in symbols:
+                name = sym.get("name_path", sym.get("name", "?"))
+                loc = sym.get("body_location", {})
+                start = loc.get("start_line", "?")
+                end = loc.get("end_line", "")
+                line_str = f":{start}-{end}" if end else f":{start}" if start != "?" else ""
+                print(f"    {name}{line_str}")
+        # For functions, show names
+        elif kind == 12:
+            print(f"  {kind_name.upper()}:")
+            for sym in symbols[:10]:
+                name = sym.get("name_path", sym.get("name", "?"))
+                loc = sym.get("body_location", {})
+                line = loc.get("start_line", "?")
+                print(f"    {name}() :{line}")
+            if len(symbols) > 10:
+                print(f"    ... +{len(symbols) - 10} more")
+        # For constants/variables, compact list
+        elif kind in [13, 14]:
+            names = [sym.get("name_path", sym.get("name", "?")) for sym in symbols[:8]]
+            extra = f" +{len(symbols) - 8}" if len(symbols) > 8 else ""
+            print(f"  {kind_name.upper()}: {', '.join(names)}{extra}")
+    print()
 
 
 def cmd_search(args, out: Output):
@@ -221,7 +355,31 @@ def cmd_search(args, out: Output):
         out.error(f"No matches for pattern '{args.pattern}'",
                   hint="Check regex syntax or try a different glob")
 
-    out.success(result)
+    # JSON mode - output as-is
+    if out.json_mode:
+        out.success(result)
+        return
+
+    # Human-readable format grouped by file
+    if isinstance(result, dict):
+        total_matches = sum(len(v) for v in result.values())
+        glob_str = f" in {args.glob}" if args.glob else ""
+        print(f"Pattern: '{args.pattern}'{glob_str}")
+        print(f"Found {total_matches} matches in {len(result)} files\n")
+
+        for path, matches in list(result.items())[:15]:
+            print(f"  {path}:")
+            for match in matches[:5]:
+                # Extract line number if present in format "  123: code"
+                match_clean = match.strip()
+                print(f"    {match_clean[:80]}")
+            if len(matches) > 5:
+                print(f"    ... +{len(matches) - 5} more matches")
+        if len(result) > 15:
+            print(f"\n  ... +{len(result) - 15} more files")
+        print()
+    else:
+        out.success(result)
 
 
 def cmd_memory(args, out: Output):
@@ -585,6 +743,7 @@ Note: LSP indexes src/ before vendor/. Use --path src/ for faster results.
     p_refs = subparsers.add_parser("refs", help="Find references to symbol")
     p_refs.add_argument("symbol", help="Symbol path (e.g., Customer/getName)")
     p_refs.add_argument("file", help="File where symbol is defined")
+    p_refs.add_argument("--all", "-a", action="store_true", help="Show all references (default: top 10 files)")
 
     # overview
     p_overview = subparsers.add_parser("overview", help="Get file structure")
