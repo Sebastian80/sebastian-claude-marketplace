@@ -1,0 +1,29 @@
+---
+name: {{SKILL_NAME}}
+description: {{SKILL_DESCRIPTION}}
+license: MIT
+allowed-tools:
+  - Read
+  - Glob
+  - Grep
+---
+
+# {{SKILL_TITLE}}
+
+## Overview
+
+{{SKILL_OVERVIEW}}
+
+## When to Use
+
+Use this skill when:
+- {{USE_CASE_1}}
+- {{USE_CASE_2}}
+
+## Instructions
+
+{{INSTRUCTIONS}}
+
+## Examples
+
+{{EXAMPLES}}

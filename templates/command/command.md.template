@@ -1,0 +1,10 @@
+---
+description: {{COMMAND_DESCRIPTION}}
+argument-hint: {{ARGUMENT_HINT}}
+allowed-tools:
+  - Read
+  - Glob
+  - Grep
+---
+
+{{COMMAND_INSTRUCTIONS}}

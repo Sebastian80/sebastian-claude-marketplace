@@ -1,0 +1,29 @@
+# {{PLUGIN_TITLE}}
+
+{{PLUGIN_DESCRIPTION}}
+
+## Installation
+
+```bash
+/plugin install {{PLUGIN_NAME}}@sebastian-marketplace
+```
+
+## Commands
+
+{{COMMANDS_LIST}}
+
+## Agents
+
+{{AGENTS_LIST}}
+
+## Skills
+
+{{SKILLS_LIST}}
+
+## Hooks
+
+{{HOOKS_LIST}}
+
+## Usage
+
+{{USAGE_EXAMPLES}}

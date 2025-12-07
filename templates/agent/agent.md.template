@@ -1,0 +1,24 @@
+---
+name: {{AGENT_NAME}}
+description: {{AGENT_DESCRIPTION}}
+model: sonnet
+tools:
+  - Read
+  - Glob
+  - Grep
+  - Bash
+---
+
+# {{AGENT_TITLE}} Agent
+
+## Context
+
+You are a specialized agent for {{AGENT_PURPOSE}}.
+
+## Instructions
+
+{{AGENT_INSTRUCTIONS}}
+
+## Output Format
+
+{{OUTPUT_FORMAT}}

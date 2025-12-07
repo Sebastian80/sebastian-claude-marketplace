@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "{{HOOK_EVENT}}": [
+      {
+        "matcher": "{{HOOK_MATCHER}}",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/{{HOOK_SCRIPT}}"
+          }
+        ]
+      }
+    ]
+  }
+}
