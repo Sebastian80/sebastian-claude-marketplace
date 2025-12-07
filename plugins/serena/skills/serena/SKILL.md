@@ -154,11 +154,15 @@ Examples:
 ### serena refs - Find References
 
 ```bash
-serena refs <symbol> <file>
+serena refs <symbol> <file> [--all]
+
+Options:
+  --all, -a    Show all references (default: top 10 files)
 
 Examples:
   serena refs "Customer/getName" src/Entity/Customer.php
   serena refs "ShippingMethod" src/Meyer/ShippingBundle/Method/ShippingMethod.php
+  serena refs Tool src/tools.py --all   # Show all references
 ```
 
 ### serena overview - File Structure
@@ -405,10 +409,59 @@ serena memory read task_context
 
 ## Output Formats
 
+The CLI outputs optimized human-readable format by default, JSON with `-j` flag:
+
 ```bash
-serena find Customer              # Human-readable
-serena find Customer --json       # JSON for processing
-serena find Customer -j | jq '.[] | .name_path'
+serena find Customer              # Human-readable (token-efficient)
+serena -j find Customer           # JSON for processing
+serena -j find Customer | jq '.[] | .name_path'
+```
+
+### Human-Readable Output Examples
+
+**find with depth (shows methods):**
+```
+Tool (class) src/serena/tools/tools_base.py:107-300
+  ├─ get_name_from_cls() :118-125
+  ├─ get_name() :127-128
+  ├─ can_edit() :136-143
+  └─ apply_ex() :222-296
+     ... +10 more methods
+```
+
+**refs (grouped by file with context):**
+```
+77 references to 'Tool'
+
+  src/serena/agent.py:
+    :26  from serena.tools import Tool, ToolRegistry
+    :49  def __init__(self, tools: list[Tool]):
+    ... +8 more in this file
+  src/serena/mcp.py:
+    :168  def make_mcp_tool(tool: Tool, ...) -> MCPTool:
+  ... +10 more files (use --all to show all)
+```
+
+**overview (grouped by kind):**
+```
+src/serena/tools/tools_base.py (15 symbols)
+
+  CLASSES:
+    Component:30-65
+    Tool:107-300
+    ToolRegistry:359-430
+  CONSTANTS: T, SUCCESS_RESULT
+  VARIABLES: log
+```
+
+**search (with summary):**
+```
+Pattern: 'class.*Tool' in src/**/*.py
+Found 12 matches in 5 files
+
+  src/serena/tools/tools_base.py:
+    107: class Tool(Component):
+    358: class ToolRegistry:
 ```
 
 ## Verification
@@ -472,17 +525,26 @@ serena find Controller     # Test semantic search works
 
 ## refs: What It Returns
 
-The refs command returns **symbols that REFERENCE the target**, not lines of code:
+The refs command shows **files and context where the symbol is referenced**, grouped by file:
 
 ```bash
 serena refs "RatesProvider/getPricesForTypes" src/Meyer/ShippingBundle/Provider/RatesProvider.php
 
 # Returns:
-# [Method] ShippingMethod/calculatePrices     <- This METHOD calls getPricesForTypes
-# [Method] ShippingMethodType/calculatePrice  <- This METHOD also calls it
-
-# NOT:
-# src/file.php:123: $this->ratesProvider->getPricesForTypes(...)  <- grep would show this
+# 12 references to 'RatesProvider/getPricesForTypes'
+#
+#   src/Meyer/ShippingBundle/Method/ShippingMethod.php:
+#     :145  $prices = $this->ratesProvider->getPricesForTypes($types);
+#     :203  return $this->ratesProvider->getPricesForTypes($filtered);
+#   src/Meyer/ShippingBundle/Service/PriceCalculator.php:
+#     :78   $rates = $provider->getPricesForTypes($items);
+#   ... +3 more files (use --all to show all)
 ```
 
-This is more useful for understanding code structure, but sometimes you want grep for the exact lines.
+This shows:
+- Total count at the top for quick impact assessment
+- Grouped by file for easy navigation
+- Context snippets showing how the symbol is used
+- Truncated by default (use `--all` to see everything)
+
+For large refactoring, use `--all` to see every reference.
