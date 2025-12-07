@@ -15,29 +15,29 @@ Perform complete Serena project setup and session initialization.
 ### 1. Activate Project & Check Status
 
 ```bash
-~/.claude/skills/serena/scripts/serena status
+~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena status
 ```
 
 If no project is active, activate it:
 
 ```bash
-~/.claude/skills/serena/scripts/serena activate "$(pwd)"
+~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena activate "$(pwd)"
 ```
 
 ### 2. List Available Memories
 
 ```bash
-~/.claude/skills/serena/scripts/serena memory list
+~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena memory list
 ```
 
 ### 3. Read Key Memories
 
 ```bash
 # Project overview
-~/.claude/skills/serena/scripts/serena memory read project_overview
+~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena memory read project_overview
 
 # Any task context from previous session
-~/.claude/skills/serena/scripts/serena memory read task_context
+~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena memory read task_context
 ```
 
 ## Output

@@ -1,12 +1,12 @@
 ---
 name: serena
-description: "PRIMARY TOOL FOR PHP CODE NAVIGATION. Use BEFORE grep/find for: finding classes, methods, functions, interfaces; understanding file/class structure; finding symbol references ('who calls this?'); navigating OroCommerce/Symfony bundles; editing code by symbol path (safer than line-based edits); persisting context across sessions. If working with PHP code, USE THIS SKILL FIRST."
+description: "Use when grep returns too many matches, you need to find all method callers, or want to understand codebase structure - semantic code navigation via LSP that replaces grep/glob with symbol-aware search across 30+ languages. Finds exact definitions, all references, file structure without text-matching noise. Triggers: where is X defined, who calls this, find all usages, show class structure, find implementations"
 ---
 
 <EXTREMELY-IMPORTANT>
-# MANDATORY: PHP Code = Serena First
+# MANDATORY: Code Navigation = Serena First
 
-If you are working with PHP code and think "let me grep for this" or "let me glob for files" - STOP.
+If you are working with code in a Serena-configured language and think "let me grep for this" or "let me glob for files" - STOP.
 
 **Use Serena FIRST. Always. No exceptions.**
 
@@ -25,36 +25,67 @@ If you catch yourself thinking ANY of these, STOP:
 - "Grep will find all usages" → WRONG. Grep finds TEXT. `serena refs` finds CODE REFERENCES.
 - "I know the file path already" → WRONG. Still use `serena overview`.
 - "This is a simple search" → WRONG. Simple searches benefit MOST from semantic tools.
-- "I'll use the Task/Explore agent" → WRONG for PHP. Use Serena directly.
-- "Let me glob for PHP files first" → WRONG. `serena find` searches ALL PHP files semantically.
+- "I'll use the Task/Explore agent" → WRONG. Use Serena directly or serena-explore agent.
+- "Let me glob for files first" → WRONG. `serena find` searches semantically.
 
 **If a Serena operation exists for your task, you MUST use it.**
 </EXTREMELY-IMPORTANT>
 
-# Serena CLI - Professional PHP Code Intelligence
+## Automatic Triggers
+
+**Use Serena IMMEDIATELY when user asks ANY of these:**
+
+| User Request Pattern | Serena Command |
+|---------------------|----------------|
+| "Find class X" / "Where is X defined" | `serena find X --body` |
+| "Who calls X" / "Find usages of X" | `serena refs X/method file.php` |
+| "How does X work" / "Show me X" | `serena find X --body` |
+| "Find all controllers/entities" | `serena recipe controllers` |
+| "What methods does X have" | `serena overview file.php` |
+| "Refactor X" / "Rename X" | `serena refs` then `serena edit` |
+
+## When to Use vs When NOT to Use
+
+| ✅ USE SERENA | ❌ USE GREP INSTEAD |
+|---------------|---------------------|
+| Finding class/method/function definitions | Searching template files (.twig, .html) |
+| Tracing who calls a method ("find refs") | Finding text in comments |
+| Understanding file/class structure | Searching languages NOT in project.yml |
+| Navigating languages configured in `.serena/project.yml` | Finding strings/literals across all files |
+| Refactoring by symbol path | Log files, .env files |
+| Cross-file symbol references | Hybrid search (code + config) |
+
+**Rule:** Serena for CONFIGURED LANGUAGES. Grep for UNCONFIGURED/TEMPLATES/COMMENTS.
+**Note:** Run `serena status` to see active languages. Edit `.serena/project.yml` to add more.
+
+# Serena CLI - Semantic Code Intelligence (30+ Languages)
 
 ## LSP Backend
 
-**Intelephense Premium** - Licensed PHP language server providing:
+**Language Server Protocol** - Multiple language servers providing:
 - Semantic symbol search (not text matching)
 - Find implementations of interfaces/abstract classes
 - Find all references to symbols
 - Type hierarchy navigation
 - Accurate code navigation across the entire codebase
 
+**Supported Languages:** AL, Bash, C++, C#, Clojure, Dart, Elixir, Elm, Erlang, Fortran, Go, Haskell, Java, JavaScript, Julia, Kotlin, Lua, Markdown, Nix, Perl, PHP, Python, R, Rego, Ruby, Rust, Scala, Swift, Terraform, TypeScript, YAML, Zig
+
+**Note:** Check `.serena/project.yml` for which languages are configured in your project.
+
 ## Setup
 
-The CLI is at `~/.claude/skills/serena/scripts/serena`. All commands are auto-accepted.
+The CLI is at `~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena`. All commands are auto-accepted.
 
 ```bash
 # Option 1: Use full path
-~/.claude/skills/serena/scripts/serena find Customer
+~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena find Customer
 
 # Option 2: Create alias (add to ~/.bashrc or ~/.zshrc)
-alias serena='~/.claude/skills/serena/scripts/serena'
+alias serena='~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena'
 
 # Option 3: Symlink to PATH
-ln -s ~/.claude/skills/serena/scripts/serena ~/bin/serena
+ln -s ~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena ~/bin/serena
 ```
 
 ## Quick Reference (Cheat Sheet)
@@ -212,19 +243,6 @@ serena status                # Show config and active tools
 serena tools                 # List all available Serena operations
 ```
 
-## Automatic Triggers
-
-**Use Serena IMMEDIATELY when user asks ANY of these:**
-
-| User Request Pattern | Serena Command |
-|---------------------|----------------|
-| "Find class X" / "Where is X defined" | `serena find X --body` |
-| "Who calls X" / "Find usages of X" | `serena refs X/method file.php` |
-| "How does X work" / "Show me X" | `serena find X --body` |
-| "Find all controllers/entities" | `serena recipe controllers` |
-| "What methods does X have" | `serena overview file.php` |
-| "Refactor X" / "Rename X" | `serena refs` then `serena edit` |
-
 ## Autonomous Workflows
 
 ### Workflow 1: Find Where X is Defined
@@ -279,7 +297,7 @@ serena memory write debug_trace "## Call Chain: ..."
 | `glob "**/*Customer*.php"` | `serena find Customer` |
 | Read file to find class | `serena overview file.php` |
 | Edit by line number | `serena edit replace Symbol file.php` |
-| Task agent for PHP | `serena` directly |
+| Generic Task/Explore agent | `serena` directly or `serena-explore` agent |
 
 ## Fallback Rules
 
@@ -288,7 +306,7 @@ serena memory write debug_trace "## Call Chain: ..."
 1. **Empty results?** Broaden the pattern: `CustomerEntity` → `Customer`
 2. **Still empty?** Check: `serena status` (is project activated?)
 3. **Truly can't help?** State why: "Serena returned empty, falling back to grep"
-4. **Use standard tools for:** non-PHP files, creating new files, reading logs
+4. **Use standard tools for:** unconfigured languages, config files, creating new files, reading logs
 
 ## Symbol Path Convention
 
@@ -351,11 +369,11 @@ serena find Controller     # Test semantic search works
 │ ~/.../scripts/serena│   localhost:9121     │ (Centralized)          │
 │                     │                      │                        │
 │ Python wrapper that │                      │ ┌────────────────────┐ │
-│ translates commands │                      │ │ Intelephense LSP   │ │
-│ to MCP tool calls   │                      │ │ (Premium License)  │ │
+│ translates commands │                      │ │ Language Servers   │ │
+│ to MCP tool calls   │                      │ │ (30+ LSP backends) │ │
 └─────────────────────┘                      │ └────────────────────┘ │
                                              │                        │
-                                             │ Semantic PHP analysis: │
+                                             │ Semantic code analysis:│
                                              │ - Symbol indexing      │
                                              │ - Type inference       │
                                              │ - Reference tracking   │
@@ -366,133 +384,23 @@ serena find Controller     # Test semantic search works
 **Key points:**
 - The `serena` CLI is just a thin Python wrapper
 - All semantic intelligence comes from the MCP server
-- The server runs Intelephense Premium (licensed PHP LSP)
+- The server runs language-specific LSP backends (30+ languages supported)
 - Session state is managed via HTTP headers (`mcp-session-id`)
 - Project activation is required before searching
+- Languages configured in `.serena/project.yml`
 
 ## Troubleshooting
 
-### "No symbols found" Error
+| Problem | Cause | Fix |
+|---------|-------|-----|
+| "No symbols found" | Pattern too specific or project not activated | Broaden pattern (`CustomerEntity` → `Customer`), run `serena status` |
+| "No references found" | Wrong symbol path format | Use `serena find X` first to get exact path, then use that in `refs` |
+| refs empty but method IS called | Called from config files, not code | Combine: `serena refs` for code + `grep` for YAML/XML configs |
+| overview too brief | Shows structure only, not implementation | Use `serena find X --body` instead |
+| Connection errors | Server not running | Run `serena status`, check localhost:9121 |
+| Project not indexed | First activation needs time | Wait a few seconds after `serena activate`, then retry |
 
-**Causes:**
-1. Pattern too specific (e.g., full namespace vs short name)
-2. Project not activated
-3. Typo in symbol name
-
-**Fixes:**
-```bash
-# Broaden the pattern
-serena find CustomerEntityListener     # Too specific?
-serena find CustomerEntity             # Still nothing?
-serena find Customer                   # Broader - should find more
-
-# Check project activation
-serena status
-# If "Active project: None" or wrong project:
-serena activate /path/to/project
-```
-
-### "No references found" Error
-
-**The #1 cause: Wrong symbol path format.**
-
-The `refs` command requires the EXACT symbol path as returned by `find`.
-
-```bash
-# WRONG - guessing the path
-serena refs "addDeCert" src/file.php                    # Missing class prefix!
-serena refs "CustomerListener/addDeCert" src/file.php   # Wrong class name!
-
-# CORRECT - use find first to get exact path
-serena find addDeCert --kind method
-# Output: CustomerEntityListener/addDeCert at src/.../CustomerEntityListener.php:68
-
-# Now use the EXACT path from output
-serena refs "CustomerEntityListener/addDeCert" src/Meyer/CustomerBundle/EventListener/CustomerEntityListener.php
-```
-
-**Other causes:**
-- Method is truly never called (check for commented-out code with grep)
-- Method is called dynamically (reflection, magic methods)
-- References are in non-PHP files (YAML config, XML) - use grep instead
-
-### refs Returns Empty But Method IS Called
-
-**The method might be called from YAML/XML config (not PHP code).**
-
-Serena only understands PHP. Symfony/Oro often wire listeners via YAML:
-
-```bash
-# Serena sees: no PHP code calls this
-serena refs "CustomerEntityListener/addDeSpecificationsOnPrePersist" src/file.php
-# Returns empty!
-
-# But grep finds the YAML binding:
-grep -r "addDeSpecificationsOnPrePersist" --include="*.yml" src/
-# Output: doctrine.orm.entity_listener config!
-```
-
-**Solution: Combine Serena + grep for full picture.**
-
-### serena overview Returns Minimal Info
-
-The `overview` command shows file structure, not implementation details.
-
-```bash
-# If overview is too brief:
-serena overview src/Entity/Customer.php
-# Returns: just Namespace + Class
-
-# Get more detail with find + body:
-serena find Customer --body --path src/Entity/Customer.php
-```
-
-### Connection Errors
-
-```bash
-# Check if server is running
-serena status
-
-# If "Cannot connect to Serena":
-# 1. Check server is running on localhost:9121
-# 2. Check SERENA_URL environment variable
-# 3. Restart the Serena server if needed
-```
-
-### Project Not Indexed
-
-After first activation, Serena needs time to index:
-
-```bash
-serena activate /path/to/project
-# Wait a few seconds for indexing
-
-serena find SomeClass  # Should work now
-```
-
-## When to Use Grep Instead of Serena
-
-| Scenario | Why Grep |
-|----------|----------|
-| Search YAML/XML config | Serena only parses PHP |
-| Find service definitions | Usually in `services.yml` |
-| Find Doctrine listener bindings | In `entity_listener.yml` |
-| Search Twig templates | Not PHP |
-| Find text in comments | Serena ignores comments |
-| Check if something exists ANYWHERE | Grep is file-type agnostic |
-
-**Hybrid workflow example:**
-
-```bash
-# 1. Find PHP implementation with Serena
-serena find CustomerEntityListener --body
-
-# 2. Find how it's wired with grep
-grep -r "CustomerEntityListener" --include="*.yml" --include="*.xml" src/
-
-# 3. Find where it's used in templates
-grep -r "customer" --include="*.twig" src/
-```
+**Key rule for refs:** Always `serena find X` first → copy exact symbol path → use in `serena refs "ExactPath" file.php`
 
 ## Common Symbol Path Patterns
 

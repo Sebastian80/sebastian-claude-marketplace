@@ -21,7 +21,7 @@ Before saving, analyze the current session:
 
 ### 2. Save Session Context
 ```bash
-~/.claude/skills/serena/scripts/serena memory write session_context "## Session: $(date '+%Y-%m-%d')
+~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena memory write session_context "## Session: $(date '+%Y-%m-%d')
 
 ### What I Worked On
 - [list main tasks/topics from this session]
@@ -40,7 +40,7 @@ Before saving, analyze the current session:
 
 ### 3. Save Task Progress (if working on specific task)
 ```bash
-~/.claude/skills/serena/scripts/serena memory write task_progress "## Task: [task name]
+~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena memory write task_progress "## Task: [task name]
 
 ### Status: [in_progress|blocked|review|done]
 
@@ -59,7 +59,7 @@ Before saving, analyze the current session:
 
 ### 4. Save Learnings (if discovered something useful)
 ```bash
-~/.claude/skills/serena/scripts/serena memory write learnings "## Learnings
+~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena memory write learnings "## Learnings
 
 ### Patterns Discovered
 - [useful pattern or approach]
@@ -76,7 +76,7 @@ Before saving, analyze the current session:
 
 ### 5. Confirm Save
 ```bash
-~/.claude/skills/serena/scripts/serena memory list
+~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena memory list
 ```
 
 Report what was saved:
