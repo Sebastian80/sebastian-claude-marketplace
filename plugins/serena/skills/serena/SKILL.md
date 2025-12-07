@@ -299,14 +299,71 @@ serena memory write debug_trace "## Call Chain: ..."
 | Edit by line number | `serena edit replace Symbol file.php` |
 | Generic Task/Explore agent | `serena` directly or `serena-explore` agent |
 
+## Smart Search Strategy
+
+### Progressive Search (Broad → Narrow)
+
+Start with broad patterns, narrow only if too many results:
+
+```bash
+# GOOD: Start broad
+serena find Payment                     # Anything with "Payment"
+serena find Payment --kind class        # Only classes
+serena find Payment --path src/         # Only in src/
+
+# BAD: Too specific (may fail during indexing)
+serena find PaymentMethodProviderInterface  # Very specific name
+serena find Oro\\Bundle\\PaymentBundle      # Namespaces often fail
+```
+
+### Good vs Bad Search Patterns
+
+| ❌ BAD | ✅ GOOD |
+|--------|---------|
+| `find PaymentMethodInterface` | `find Payment --kind interface` |
+| `find CustomerEntityListener` | `find Customer --kind class` |
+| `find addDeSpecificationsOnPrePersist` | `find addDe --kind method` |
+
+### 3-Strike Rule
+
+Try up to 3 progressively broader patterns before falling back:
+
+```bash
+# Strike 1: Specific
+serena find PaymentMethodInterface --kind interface
+# Exit 1? → broaden
+
+# Strike 2: Shorter
+serena find PaymentMethod --kind interface
+# Exit 1? → broaden more
+
+# Strike 3: Minimal
+serena find Payment --kind interface
+# Exit 1? → fall back to grep
+```
+
+### Indexing Awareness
+
+LSP indexes `src/` before `vendor/`. During initial indexing:
+
+```bash
+# Likely works (local code indexed first):
+serena find Customer --path src/Meyer/
+
+# May fail until fully indexed:
+serena find Mollie --path vendor/
+```
+
+**State what's happening:** "Serena can't find X in vendor/ yet (still indexing), using grep"
+
 ## Fallback Rules
 
 **Only fall back to grep/glob when Serena genuinely can't help:**
 
 1. **Empty results?** Broaden the pattern: `CustomerEntity` → `Customer`
-2. **Still empty?** Check: `serena status` (is project activated?)
-3. **Truly can't help?** State why: "Serena returned empty, falling back to grep"
-4. **Use standard tools for:** unconfigured languages, config files, creating new files, reading logs
+2. **Still empty?** Try `--path src/` (indexed faster than vendor/)
+3. **3 strikes and out?** Fall back to grep, state why
+4. **Use grep/glob for:** templates (.twig), XML configs, .env files, comments/strings
 
 ## Symbol Path Convention
 

@@ -1,0 +1,20 @@
+{
+  "name": "jira-integration",
+  "version": "3.0.2",
+  "description": "Comprehensive Jira integration with syntax validation, templates, and API operations",
+  "author": {
+    "name": "Netresearch DTT GmbH",
+    "email": "info@netresearch.de"
+  },
+  "license": "MIT",
+  "skills": [
+    {
+      "name": "jira-syntax",
+      "path": "skills/jira-syntax"
+    },
+    {
+      "name": "jira-communication",
+      "path": "skills/jira-communication"
+    }
+  ]
+}

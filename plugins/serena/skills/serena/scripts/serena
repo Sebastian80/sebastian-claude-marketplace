@@ -18,12 +18,34 @@ Commands:
     tools       List available Serena tools
     status      Check Serena connection status
 
+Search Strategy (3-Strike Rule):
+    1. Start BROAD: serena find Payment
+    2. If too many: serena find Payment --kind class
+    3. If still none: serena find Pay --path src/
+    → After 3 fails: fall back to grep
+
+Language-Specific Patterns:
+    PHP:     serena find Customer --kind class --path src/
+             serena find Interface --kind interface
+             serena refs "Entity/getId" src/Entity.php
+
+    JS/TS:   serena find View --kind class --path "*/Resources/public/js/"
+             serena find initialize --kind method
+
+    YAML:    serena find payment_method (service key names)
+             serena search "tags:.*kernel.event" --glob "*.yml"
+
+Indexing Note:
+    LSP indexes src/ before vendor/. During initial indexing:
+    - Use --path src/ for faster results
+    - vendor/ symbols appear after full indexing
+    - If "No symbols found" → try broader pattern or use grep
+
 Examples:
     serena activate                       Activate project in current directory
-    serena activate /path/to/project      Activate specific project
-    serena activate myproject             Activate by registered name
-    serena projects                       List all registered projects
     serena find Customer --body           Find Customer class with body
+    serena find Payment --kind interface  Find Payment interfaces
+    serena find get --kind method --path src/Meyer/
     serena refs "Customer/getName" src/Entity/Customer.php
     serena recipe entities
     serena memory list
@@ -147,8 +169,23 @@ def cmd_find(args, out: Output):
     result = parse_result(call("find_symbol", **kwargs))
 
     if not result:
+        hints = []
+        # Check if pattern seems too specific
+        if len(args.pattern) > 15 or '\\' in args.pattern:
+            hints.append(f"Pattern may be too specific - try shorter: '{args.pattern[:8]}...'")
+        else:
+            hints.append("Try a broader pattern (e.g., 'Payment' instead of 'PaymentMethodInterface')")
+
+        # Suggest src/ path if searching vendor
+        if args.path and 'vendor' in args.path:
+            hints.append("vendor/ indexes slower - try --path src/ first")
+        elif not args.path:
+            hints.append("Try --path src/ (local code indexes before vendor/)")
+
+        hints.append("LSP may still be indexing - wait or use grep as fallback")
+
         out.error(f"No symbols found matching '{args.pattern}'",
-                  hint="Try a broader pattern or check spelling")
+                  hint=" | ".join(hints[:2]))
 
     out.success(result)
 
@@ -502,16 +539,31 @@ def cmd_projects(args, out: Output):
 def main():
     parser = argparse.ArgumentParser(
         prog="serena",
-        description="LSP-powered PHP code intelligence",
+        description="LSP-powered code intelligence (PHP, JS/TS, YAML, Markdown)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Examples:
-  serena find Customer --body          Find Customer class with body
-  serena find "get*" --kind method     Find all methods starting with 'get'
+Search Strategy (3-Strike Rule):
+  1. Start BROAD:     serena find Payment
+  2. Add filters:     serena find Payment --kind class
+  3. Restrict path:   serena find Payment --path src/
+  → After 3 fails, use grep (LSP may still be indexing)
+
+Language Examples:
+  PHP:    serena find Customer --kind class --body
+          serena refs "Entity/getId" src/Entity/Entity.php
+  JS/TS:  serena find View --kind class --path "**/public/js/"
+  YAML:   serena find payment_method
+          serena search "tags:.*event" --glob "*.yml"
+
+Common Commands:
+  serena find Customer --body          Find class with implementation
+  serena find "get*" --kind method     Find methods starting with 'get'
   serena refs Order/save src/Order.php Find who calls Order::save()
   serena recipe entities               Find all Doctrine entities
   serena memory list                   List saved memories
-  serena status                        Check Serena connection
+  serena status                        Check connection
+
+Note: LSP indexes src/ before vendor/. Use --path src/ for faster results.
         """
     )
     parser.add_argument("--json", "-j", action="store_true",

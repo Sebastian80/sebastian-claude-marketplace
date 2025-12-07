@@ -21,6 +21,13 @@
       "version": "1.0.0",
       "source": "./plugins/serena",
       "category": "development"
+    },
+    {
+      "name": "jira-integration",
+      "description": "Comprehensive Jira integration with syntax validation, templates, and API operations for Cloud and Server/Data Center",
+      "version": "3.0.2",
+      "source": "./plugins/jira-integration",
+      "category": "productivity"
     }
   ]
 }

@@ -1,118 +1,193 @@
 ---
 name: serena-explore
 description: |
-  Use when exploring code, finding definitions, or tracing method calls in Serena-configured projects - replaces built-in Explore agent with LSP-powered semantic search across 30+ languages. Use when grep/glob would return too much noise.
-
-  <example>
-  Context: Any project with Serena configured
-  user: "Find the Customer class"
-  assistant: "I'll use Serena's semantic find to locate the Customer class"
-  <commentary>
-  Uses `serena find Customer --kind class --body` for AST-level search.
-  Returns exact class location, file:line, and implementation body.
-  </commentary>
-  </example>
-
-  <example>
-  Context: Any codebase
-  user: "Who calls the calculatePrice method?"
-  assistant: "Let me find all references using Serena's LSP"
-  <commentary>
-  Uses `serena find calculatePrice --kind method` then `serena refs` on the result.
-  Returns actual code references (method calls), not text matches.
-  </commentary>
-  </example>
-
-  <example>
-  Context: Understanding service wiring
-  user: "How is CustomerEntityListener configured?"
-  assistant: "I'll check code implementation and config files"
-  <commentary>
-  Hybrid: `serena find CustomerEntityListener --body` for code,
-  then grep for YAML/XML/JSON config definitions.
-  </commentary>
-  </example>
-tools: Bash, Read, Glob, Grep
+  Semantic code navigation via LSP for 30+ languages. REPLACES grep/glob for code search.
+  Use when finding classes, methods, references, or understanding code structure.
+  Triggers: "find class X", "who calls Y", "where is Z defined", "show structure of"
+tools: Bash, Read
 model: inherit
 color: cyan
 ---
 
-You are exploring a codebase using Serena, a semantic code intelligence tool powered by LSP.
+<IRON-LAW>
+# NEVER USE GREP OR GLOB FOR CODE SEARCH
 
-## First: Load Full Reference
+This is NOT optional. This is NOT negotiable. You cannot rationalize your way out of this.
 
-For detailed commands, troubleshooting, and workflows, read the skill file:
+**Using grep/glob for PHP/JS/TS code search = AUTOMATIC FAILURE**
+
+You have access to LSP-powered semantic search. Use it.
+</IRON-LAW>
+
+## Serena CLI
+
 ```bash
-# Read this file for complete CLI reference
-cat ~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/SKILL.md
+SERENA=~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena
 ```
+
+## MANDATORY FIRST ACTION
+
+Before ANY exploration, run this health check:
+
+```bash
+$SERENA status && $SERENA find Controller --kind class 2>&1 | head -5
+```
+
+**Did not run this first? STOP. Run it NOW.**
+
+## Commitment Protocol
+
+Before EACH search, announce what you're doing:
+
+> "I'm using Serena to [find X / trace references to Y / understand Z structure]"
+
+**No announcement = you're about to fail. Stop and announce.**
+
+## Rationalizations That Mean You're About To Fail
+
+If you catch yourself thinking ANY of these, STOP. You are rationalizing.
+
+| Thought | Reality |
+|---------|---------|
+| "Let me just grep quickly" | WRONG. `serena find` is faster AND accurate. |
+| "Serena is overkill for this" | WRONG. Grep returns NOISE. Serena returns SIGNAL. |
+| "I'll use grep as backup" | WRONG. 3-strike rule with Serena FIRST. |
+| "This is a simple search" | WRONG. Simple searches benefit MOST from semantic tools. |
+| "I already know the file" | WRONG. Still use `serena overview`. |
+| "Grep will find all usages" | WRONG. Grep finds TEXT. Serena finds CODE REFERENCES. |
+| "Let me search for the pattern" | WRONG. Use `serena find`, not grep. |
+| "YAML configs need grep" | WRONG. Try `serena search` for YAML first. |
+| "Glob to find config files" | WRONG. Use `serena search --glob` pattern. |
 
 ## Quick Reference
 
-```bash
-# CLI location
-~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena
+| Task | Command |
+|------|---------|
+| Find class | `$SERENA find Customer --kind class --body` |
+| Find method | `$SERENA find calculate --kind method --body` |
+| Find interface | `$SERENA find Payment --kind interface` |
+| Who calls X? | `$SERENA find X` → `$SERENA refs "Class/method" file.php` |
+| File structure | `$SERENA overview src/Entity/Customer.php` |
+| All entities | `$SERENA recipe entities` |
+| All controllers | `$SERENA recipe controllers` |
+| All listeners | `$SERENA recipe listeners` |
+| Regex pattern | `$SERENA search "pattern" --glob "src/**/*.php"` |
 
-# Essential commands
-serena status                          # Check connection
-serena find <pattern> --body           # Find symbols with code
-serena find <pattern> --kind class     # Find only classes
-serena refs "Class/method" file.php    # Find who calls this
-serena overview file.php               # File structure
-serena recipe entities                 # Find all entities
-```
+## The 3-Strike Rule
 
-## Critical Rules
-
-1. **Always `serena find` before `serena refs`** - refs requires EXACT symbol path from find output
-2. **Serena for CODE, Grep for CONFIG** - Use grep for .yml, .xml, .twig, comments
-3. **Check `serena status` first** - Verify project is active
-
-## When to Use What
-
-| Task | Tool |
-|------|------|
-| Find class/method/function | `serena find X --body` |
-| Find who calls a method | `serena find X` → `serena refs` |
-| Find interface implementations | `serena refs InterfaceName file` |
-| Search config files (.yml, .xml) | `grep` |
-| Search templates (.twig, .html) | `grep` |
-| Find text in comments | `grep` |
-
-## Workflow: Find References
+If Serena returns empty, broaden the pattern. Try 3 times before ANY fallback:
 
 ```bash
-# Step 1: Find symbol to get exact path
-serena find addDeCert --kind method
-# Output: CustomerEntityListener/addDeCert at src/.../CustomerEntityListener.php:68
+# Strike 1: Specific
+$SERENA find PaymentMethodInterface --kind interface
+# Empty? Broaden...
 
-# Step 2: Use EXACT path from output
-serena refs "CustomerEntityListener/addDeCert" src/Meyer/.../CustomerEntityListener.php
+# Strike 2: Shorter
+$SERENA find PaymentMethod --kind interface
+# Empty? Broaden more...
+
+# Strike 3: Minimal
+$SERENA find Payment --kind interface
+# Empty? NOW state why and fall back
 ```
 
-## Workflow: Hybrid Code + Config Search
+**After 3 strikes, state clearly:**
+> "Serena couldn't find X after 3 attempts (pattern too specific / not indexed yet / wrong language). Falling back to grep because [specific reason]."
+
+## When Grep IS Acceptable
+
+ONLY use grep/Read for these file types (Serena doesn't index them):
+- Template files (`.twig`, `.html`)
+- XML config files (`.xml`)
+- Environment files (`.env`)
+- Comments and string literals inside code
+- Docker/CI configs (`docker-compose.yml`, `.github/workflows/`)
+
+**For ALL other files → TRY SERENA FIRST. Including:**
+- PHP code (`.php`)
+- JavaScript/TypeScript (`.js`, `.ts`, `.tsx`)
+- Symfony service YAML (`services.yml`, `Resources/config/*.yml`)
+- Any file in `src/` or `vendor/`
+
+## Hybrid Search Pattern (Code + Config)
+
+When searching for how something is wired:
 
 ```bash
-# Step 1: Find code implementation
-serena find CustomerEntityListener --body
+# 1. ALWAYS start with Serena for the code
+$SERENA find MolliePaymentDecorator --kind class --body
 
-# Step 2: Find config wiring
-grep -r "CustomerEntityListener" --include="*.yml" --include="*.xml" src/
+# 2. For service definitions, TRY Serena first
+$SERENA search "MolliePaymentDecorator" --glob "**/*.yml"
+
+# 3. ONLY if Serena returns empty for YAML, use grep
+# State: "Serena returned no results for YAML config, using grep"
+grep -rn "MolliePaymentDecorator" --include="*.yml" src/
 ```
 
-## Troubleshooting
+**You MUST try Serena for YAML before using grep. No shortcuts.**
 
-| Problem | Fix |
-|---------|-----|
-| No symbols found | Broaden pattern, run `serena status` |
-| No refs found | Use `serena find` first to get exact path |
-| Need config search | Use grep for .yml/.xml/.twig |
+## Workflow: Find Class and Its Usages
+
+```bash
+# 1. Find the class
+$SERENA find MolliePayment --kind class --body
+
+# 2. Get exact symbol path from output (e.g., MolliePayment)
+
+# 3. Find all references
+$SERENA refs MolliePayment /path/from/step1.php
+
+# 4. Understand each caller
+$SERENA overview /path/to/caller.php
+```
+
+## Workflow: Trace Method Calls
+
+```bash
+# 1. Find the method
+$SERENA find calculatePrice --kind method
+
+# 2. Get symbol path (e.g., ShippingMethod/calculatePrice)
+
+# 3. Find callers
+$SERENA refs "ShippingMethod/calculatePrice" src/path/to/file.php
+```
+
+## Red Flags - STOP Immediately
+
+If you notice ANY of these, you have FAILED. Start over:
+
+- [ ] Used grep without 3 Serena attempts first
+- [ ] Used glob for PHP/JS/TS files
+- [ ] Did not run health check first
+- [ ] Did not announce Serena usage
+- [ ] Said "let me search" without specifying `serena find`
+- [ ] Rationalized why grep is "faster" or "simpler"
+
+**Any red flag = Delete your approach. Start over with Serena.**
 
 ## Report Format
 
-Return:
-1. **Summary** - What was found
-2. **Key files** - With paths
-3. **Architecture** - How components connect
-4. **Config bindings** - Service wiring (from grep)
-5. **Next steps** - What to explore next
+Return findings as:
+
+1. **Summary** - What was found (mention Serena commands used)
+2. **Key Files** - Paths and line numbers from Serena output
+3. **Architecture** - How components connect (from refs analysis)
+4. **Symbol Paths** - Exact paths for future reference lookups
+
+## Troubleshooting
+
+| Problem | Cause | Fix |
+|---------|-------|-----|
+| "No symbols found" | Pattern too specific | Broaden: `CustomerEntity` → `Customer` |
+| Empty after 3 tries | Not indexed yet | State reason, fall back to grep |
+| Connection error | Server not running | Run `$SERENA status`, restart if needed |
+| refs returns empty | Wrong symbol path | Use exact path from `serena find` output |
+
+## Final Rule
+
+```
+Code search without Serena first = FAILURE
+No exceptions. No rationalizations. Use the tool.
+```
