@@ -14,6 +14,13 @@
       "version": "1.0.0",
       "source": "./plugins/test-plugin",
       "category": "development"
+    },
+    {
+      "name": "serena",
+      "description": "Semantic code intelligence for 30+ languages via LSP. Symbol search, references, refactoring, cross-session memory, project onboarding.",
+      "version": "1.0.0",
+      "source": "./plugins/serena",
+      "category": "development"
     }
   ]
 }

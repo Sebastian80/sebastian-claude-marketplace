@@ -1,0 +1,645 @@
+#!/usr/bin/env python3
+"""
+Serena CLI - Professional LSP-powered code intelligence
+
+Usage:
+    serena <command> [options]
+
+Commands:
+    activate    Activate a project (defaults to current directory)
+    projects    List registered projects
+    find        Find symbols by name pattern
+    refs        Find all references to a symbol
+    overview    Get file/class structure
+    search      Search code with regex patterns
+    memory      Memory operations (list, read, write, delete)
+    edit        Symbol-based code editing
+    recipe      Common pre-built operations
+    tools       List available Serena tools
+    status      Check Serena connection status
+
+Examples:
+    serena activate                       Activate project in current directory
+    serena activate /path/to/project      Activate specific project
+    serena activate myproject             Activate by registered name
+    serena projects                       List all registered projects
+    serena find Customer --body           Find Customer class with body
+    serena refs "Customer/getName" src/Entity/Customer.php
+    serena recipe entities
+    serena memory list
+"""
+
+import argparse
+import json
+import sys
+import os
+from datetime import datetime
+
+# Add script directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from serena_client import SerenaClient, call
+
+
+def parse_result(result):
+    """Parse result that might be JSON string or already parsed."""
+    if isinstance(result, str):
+        try:
+            return json.loads(result)
+        except json.JSONDecodeError:
+            return result
+    return result
+
+
+# =============================================================================
+# Output Formatting
+# =============================================================================
+
+class Output:
+    """Consistent output formatting."""
+
+    def __init__(self, json_mode: bool = False):
+        self.json_mode = json_mode
+
+    def success(self, data):
+        """Output successful result."""
+        if self.json_mode:
+            print(json.dumps(data, indent=2))
+        elif isinstance(data, str):
+            print(data)
+        elif isinstance(data, list):
+            for item in data:
+                if isinstance(item, dict):
+                    self._print_symbol(item)
+                else:
+                    print(f"  - {item}")
+        elif isinstance(data, dict):
+            print(json.dumps(data, indent=2))
+        else:
+            print(data)
+
+    def error(self, message: str, hint: str = None):
+        """Output error message."""
+        if self.json_mode:
+            print(json.dumps({"error": message, "hint": hint}), file=sys.stderr)
+        else:
+            print(f"Error: {message}", file=sys.stderr)
+            if hint:
+                print(f"Hint: {hint}", file=sys.stderr)
+        sys.exit(1)
+
+    def info(self, message: str):
+        """Output info message (non-JSON only)."""
+        if not self.json_mode:
+            print(message, file=sys.stderr)
+
+    def _print_symbol(self, sym: dict):
+        """Pretty-print a symbol."""
+        kind_map = {
+            3: "NS", 5: "Class", 6: "Method", 7: "Prop",
+            11: "Interface", 12: "Func", 14: "Const"
+        }
+        kind = sym.get("kind", "?")
+        kind_str = kind_map.get(kind, kind) if isinstance(kind, int) else kind
+        name = sym.get("name_path", "?")
+        path = sym.get("relative_path", "")
+        loc = sym.get("body_location", {})
+        line = loc.get("start_line", "?") if loc else "?"
+
+        print(f"  [{kind_str:10}] {name}")
+        print(f"              {path}:{line}")
+
+        if "body" in sym and sym["body"]:
+            body_preview = sym["body"][:200].replace("\n", " ")
+            if len(sym["body"]) > 200:
+                body_preview += "..."
+            print(f"              {body_preview}")
+        print()
+
+
+# =============================================================================
+# Commands
+# =============================================================================
+
+def cmd_find(args, out: Output):
+    """Find symbols by name pattern."""
+    kwargs = {
+        "name_path_pattern": args.pattern,
+        "substring_matching": not args.exact,
+        "include_body": args.body,
+        "depth": args.depth
+    }
+    if args.path:
+        kwargs["relative_path"] = args.path
+    if args.kind:
+        kind_map = {"class": 5, "method": 6, "interface": 11, "function": 12, "namespace": 3, "property": 7, "constant": 14}
+        kinds = []
+        for k in args.kind:
+            k_lower = k.lower()
+            if k_lower in kind_map:
+                kinds.append(kind_map[k_lower])
+            elif k.isdigit():
+                kinds.append(int(k))
+            else:
+                print(f"Warning: Unknown kind '{k}', ignoring. Valid: {', '.join(kind_map.keys())}", file=sys.stderr)
+        if kinds:
+            kwargs["include_kinds"] = kinds
+
+    result = parse_result(call("find_symbol", **kwargs))
+
+    if not result:
+        out.error(f"No symbols found matching '{args.pattern}'",
+                  hint="Try a broader pattern or check spelling")
+
+    out.success(result)
+
+
+def cmd_refs(args, out: Output):
+    """Find all references to a symbol."""
+    result = parse_result(call("find_referencing_symbols",
+                  name_path=args.symbol,
+                  relative_path=args.file))
+
+    if not result:
+        out.error(f"No references found for '{args.symbol}'",
+                  hint="Verify the symbol exists with 'serena find'")
+
+    out.success(result)
+
+
+def cmd_overview(args, out: Output):
+    """Get overview of symbols in a file."""
+    result = parse_result(call("get_symbols_overview", relative_path=args.file))
+    out.success(result)
+
+
+def cmd_search(args, out: Output):
+    """Search for regex pattern in code."""
+    kwargs = {"substring_pattern": args.pattern}
+    if args.glob:
+        kwargs["paths_include_glob"] = args.glob
+
+    result = parse_result(call("search_for_pattern", **kwargs))
+
+    if not result:
+        out.error(f"No matches for pattern '{args.pattern}'",
+                  hint="Check regex syntax or try a different glob")
+
+    out.success(result)
+
+
+def cmd_memory(args, out: Output):
+    """Memory operations."""
+    if args.memory_cmd == "list":
+        result = call("list_memories")
+        if isinstance(result, str):
+            result = json.loads(result)
+        out.success(result)
+
+    elif args.memory_cmd == "read":
+        result = call("read_memory", memory_file_name=args.name)
+        out.success(result)
+
+    elif args.memory_cmd == "write":
+        content = args.content
+        if content == "-":
+            content = sys.stdin.read()
+        # Auto-add timestamp unless --no-timestamp flag is set
+        if not getattr(args, 'no_timestamp', False):
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            # Append timestamp as HTML comment at the end (invisible in rendered markdown)
+            content = f"{content}\n\n<!-- Updated: {timestamp} -->"
+        result = call("write_memory", memory_file_name=args.name, content=content)
+        out.info(f"Memory '{args.name}' written successfully")
+        out.success(result)
+
+    elif args.memory_cmd == "delete":
+        result = call("delete_memory", memory_file_name=args.name)
+        out.info(f"Memory '{args.name}' deleted")
+        out.success(result)
+
+
+def cmd_edit(args, out: Output):
+    """Symbol-based code editing."""
+    if args.edit_cmd == "replace":
+        body = args.body
+        if body == "-":
+            body = sys.stdin.read()
+        result = call("replace_symbol_body",
+                      name_path=args.symbol,
+                      relative_path=args.file,
+                      body=body)
+
+    elif args.edit_cmd == "after":
+        body = args.body
+        if body == "-":
+            body = sys.stdin.read()
+        result = call("insert_after_symbol",
+                      name_path=args.symbol,
+                      relative_path=args.file,
+                      body=body)
+
+    elif args.edit_cmd == "before":
+        body = args.body
+        if body == "-":
+            body = sys.stdin.read()
+        result = call("insert_before_symbol",
+                      name_path=args.symbol,
+                      relative_path=args.file,
+                      body=body)
+
+    elif args.edit_cmd == "rename":
+        result = call("rename_symbol",
+                      name_path=args.symbol,
+                      relative_path=args.file,
+                      new_name=args.new_name)
+
+    out.success(result)
+
+
+def cmd_recipe(args, out: Output):
+    """Pre-built recipes for common operations."""
+    recipes = {
+        "entities": recipe_entities,
+        "controllers": recipe_controllers,
+        "services": recipe_services,
+        "interfaces": recipe_interfaces,
+        "tests": recipe_tests,
+        "listeners": recipe_listeners,
+        "commands": recipe_commands,
+    }
+
+    if args.recipe_name == "list":
+        print("Available recipes:")
+        for name, func in recipes.items():
+            print(f"  {name:15} - {func.__doc__}")
+        return
+
+    if args.recipe_name not in recipes:
+        out.error(f"Unknown recipe: {args.recipe_name}",
+                  hint=f"Available: {', '.join(recipes.keys())}")
+
+    recipes[args.recipe_name](args, out)
+
+
+def recipe_entities(args, out: Output):
+    """Find all Doctrine entities (ORM\\Entity attribute)"""
+    # Search for ORM\Entity attribute (PHP 8 style)
+    result = parse_result(call("search_for_pattern",
+                  substring_pattern=r"#\[ORM\\Entity",
+                  paths_include_glob="src/**/*.php"))
+
+    if result and isinstance(result, dict):
+        out.info(f"Found {len(result)} entity files:")
+        out.success(result)
+    else:
+        # Try annotation style
+        result = parse_result(call("search_for_pattern",
+                      substring_pattern=r"@ORM\\Entity",
+                      paths_include_glob="src/**/*.php"))
+        if result and isinstance(result, dict):
+            out.success(result)
+        else:
+            out.error("No entities found",
+                      hint="Project may use different entity patterns")
+
+
+def recipe_controllers(args, out: Output):
+    """Find all controller classes"""
+    result = parse_result(call("find_symbol",
+                  name_path_pattern="Controller",
+                  substring_matching=True,
+                  include_kinds=[5],  # Classes only
+                  depth=0))
+
+    # Filter to only classes ending with Controller
+    if result and isinstance(result, list):
+        result = [s for s in result if s.get("name_path", "").endswith("Controller")]
+
+    if result:
+        out.info(f"Found {len(result)} controllers:")
+        out.success(result)
+    else:
+        out.error("No controllers found")
+
+
+def recipe_services(args, out: Output):
+    """Find all service classes"""
+    result = parse_result(call("find_symbol",
+                  name_path_pattern="Service",
+                  substring_matching=True,
+                  include_kinds=[5],
+                  depth=0))
+
+    if result and isinstance(result, list):
+        result = [s for s in result if "Service" in s.get("name_path", "")]
+        out.info(f"Found {len(result)} services:")
+        out.success(result)
+    else:
+        out.error("No services found")
+
+
+def recipe_interfaces(args, out: Output):
+    """Find all interfaces"""
+    result = parse_result(call("find_symbol",
+                  name_path_pattern="Interface",
+                  substring_matching=True,
+                  include_kinds=[11],
+                  depth=0))
+
+    if result and isinstance(result, list):
+        out.info(f"Found {len(result)} interfaces:")
+        out.success(result)
+    else:
+        out.error("No interfaces found")
+
+
+def recipe_tests(args, out: Output):
+    """Find all test classes"""
+    result = parse_result(call("find_symbol",
+                  name_path_pattern="Test",
+                  substring_matching=True,
+                  include_kinds=[5],
+                  depth=0))
+
+    if result and isinstance(result, list):
+        result = [s for s in result if s.get("name_path", "").endswith("Test")]
+        out.info(f"Found {len(result)} test classes:")
+        out.success(result)
+    else:
+        out.error("No test classes found")
+
+
+def recipe_listeners(args, out: Output):
+    """Find all event listeners"""
+    result = parse_result(call("find_symbol",
+                  name_path_pattern="Listener",
+                  substring_matching=True,
+                  include_kinds=[5],
+                  depth=0))
+
+    if result and isinstance(result, list):
+        out.info(f"Found {len(result)} listeners:")
+        out.success(result)
+    else:
+        out.error("No listeners found")
+
+
+def recipe_commands(args, out: Output):
+    """Find all console commands"""
+    result = parse_result(call("find_symbol",
+                  name_path_pattern="Command",
+                  substring_matching=True,
+                  include_kinds=[5],
+                  depth=0))
+
+    if result and isinstance(result, list):
+        result = [s for s in result if s.get("name_path", "").endswith("Command")]
+        out.info(f"Found {len(result)} commands:")
+        out.success(result)
+    else:
+        out.error("No commands found")
+
+
+def cmd_tools(args, out: Output):
+    """List available Serena tools."""
+    client = SerenaClient()
+    tools = client.list_tools()
+
+    if args.json:
+        out.success(tools)
+    else:
+        print("Available Serena tools:")
+        for tool in tools:
+            name = tool.get("name", "?")
+            desc = tool.get("description", "")[:60]
+            print(f"  {name:30} {desc}")
+
+
+def cmd_status(args, out: Output):
+    """Check Serena connection status."""
+    try:
+        result = call("get_current_config")
+        out.info("Serena is connected and ready")
+        out.success(result)
+    except Exception as e:
+        out.error(f"Cannot connect to Serena: {e}",
+                  hint="Is Serena server running? Check SERENA_URL env var.")
+
+
+def cmd_activate(args, out: Output):
+    """Activate a project by path or name."""
+    import os
+
+    # Default to current working directory if no path given
+    project = args.project if args.project else os.getcwd()
+
+    # Resolve relative paths
+    if os.path.exists(project) or project.startswith('/') or project.startswith('.'):
+        project = os.path.abspath(project)
+
+    try:
+        result = call("activate_project", project=project)
+        out.success(result)
+    except Exception as e:
+        error_msg = str(e)
+        if "ProjectNotFoundError" in error_msg:
+            out.error(f"Project not found: {project}",
+                      hint="Use 'serena projects' to list registered projects, or provide a valid path")
+        else:
+            out.error(f"Failed to activate project: {e}")
+
+
+def cmd_projects(args, out: Output):
+    """List registered projects."""
+    try:
+        result = call("get_current_config")
+        if isinstance(result, str):
+            # Parse the text output to extract project info
+            lines = result.split('\n')
+            active_project = None
+            available_projects = []
+            in_projects_section = False
+
+            for line in lines:
+                if line.startswith("Active project:"):
+                    active_project = line.split(":", 1)[1].strip()
+                    if active_project and active_project not in available_projects:
+                        available_projects.append(active_project)
+                elif line.startswith("Available projects:"):
+                    in_projects_section = True
+                elif in_projects_section:
+                    if line.startswith("Active context:") or line.startswith("Active modes:"):
+                        break
+                    proj = line.strip()
+                    if proj and proj not in available_projects:
+                        available_projects.append(proj)
+
+            if args.json:
+                out.success({
+                    "active": active_project,
+                    "projects": available_projects
+                })
+            else:
+                if not available_projects:
+                    print("No projects active.")
+                    print(f"\nUse 'serena activate' to activate current directory")
+                    print(f"Or:  'serena activate /path/to/project'")
+                else:
+                    print("Projects:")
+                    for proj in available_projects:
+                        marker = " (active)" if proj == active_project else ""
+                        print(f"  {proj}{marker}")
+        else:
+            out.success(result)
+    except Exception as e:
+        out.error(f"Failed to list projects: {e}")
+
+
+# =============================================================================
+# Main
+# =============================================================================
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog="serena",
+        description="LSP-powered PHP code intelligence",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  serena find Customer --body          Find Customer class with body
+  serena find "get*" --kind method     Find all methods starting with 'get'
+  serena refs Order/save src/Order.php Find who calls Order::save()
+  serena recipe entities               Find all Doctrine entities
+  serena memory list                   List saved memories
+  serena status                        Check Serena connection
+        """
+    )
+    parser.add_argument("--json", "-j", action="store_true",
+                        help="Output in JSON format")
+
+    subparsers = parser.add_subparsers(dest="command", help="Command to run")
+
+    # find
+    p_find = subparsers.add_parser("find", help="Find symbols by pattern")
+    p_find.add_argument("pattern", help="Symbol name/pattern to find")
+    p_find.add_argument("--path", "-p", help="Restrict to path")
+    p_find.add_argument("--body", "-b", action="store_true", help="Include body code")
+    p_find.add_argument("--depth", "-d", type=int, default=0, help="Traversal depth")
+    p_find.add_argument("--kind", "-k", nargs="+",
+                        help="Filter by kind: class, method, interface, function")
+    p_find.add_argument("--exact", "-e", action="store_true", help="Exact match only")
+
+    # refs
+    p_refs = subparsers.add_parser("refs", help="Find references to symbol")
+    p_refs.add_argument("symbol", help="Symbol path (e.g., Customer/getName)")
+    p_refs.add_argument("file", help="File where symbol is defined")
+
+    # overview
+    p_overview = subparsers.add_parser("overview", help="Get file structure")
+    p_overview.add_argument("file", help="File to analyze")
+
+    # search
+    p_search = subparsers.add_parser("search", help="Search with regex")
+    p_search.add_argument("pattern", help="Regex pattern")
+    p_search.add_argument("--glob", "-g", help="File glob filter")
+
+    # memory
+    p_memory = subparsers.add_parser("memory", help="Memory operations")
+    mem_sub = p_memory.add_subparsers(dest="memory_cmd")
+    mem_sub.add_parser("list", help="List all memories")
+    p_mem_read = mem_sub.add_parser("read", help="Read a memory")
+    p_mem_read.add_argument("name", help="Memory name")
+    p_mem_write = mem_sub.add_parser("write", help="Write a memory")
+    p_mem_write.add_argument("name", help="Memory name")
+    p_mem_write.add_argument("content", nargs="?", default="-", help="Content (- for stdin)")
+    p_mem_write.add_argument("--no-timestamp", action="store_true", help="Don't add timestamp")
+    p_mem_del = mem_sub.add_parser("delete", help="Delete a memory")
+    p_mem_del.add_argument("name", help="Memory name")
+
+    # edit
+    p_edit = subparsers.add_parser("edit", help="Symbol-based editing")
+    edit_sub = p_edit.add_subparsers(dest="edit_cmd")
+
+    p_replace = edit_sub.add_parser("replace", help="Replace symbol body")
+    p_replace.add_argument("symbol", help="Symbol path")
+    p_replace.add_argument("file", help="File path")
+    p_replace.add_argument("body", nargs="?", default="-", help="New body (- for stdin)")
+
+    p_after = edit_sub.add_parser("after", help="Insert after symbol")
+    p_after.add_argument("symbol", help="Symbol path")
+    p_after.add_argument("file", help="File path")
+    p_after.add_argument("body", nargs="?", default="-", help="Code to insert")
+
+    p_before = edit_sub.add_parser("before", help="Insert before symbol")
+    p_before.add_argument("symbol", help="Symbol path")
+    p_before.add_argument("file", help="File path")
+    p_before.add_argument("body", nargs="?", default="-", help="Code to insert")
+
+    p_rename = edit_sub.add_parser("rename", help="Rename symbol")
+    p_rename.add_argument("symbol", help="Symbol path")
+    p_rename.add_argument("file", help="File path")
+    p_rename.add_argument("new_name", help="New name")
+
+    # recipe
+    p_recipe = subparsers.add_parser("recipe", help="Pre-built common operations")
+    p_recipe.add_argument("recipe_name", nargs="?", default="list",
+                          help="Recipe: entities, controllers, services, interfaces, tests, listeners, commands")
+
+    # tools
+    subparsers.add_parser("tools", help="List Serena tools")
+
+    # status
+    subparsers.add_parser("status", help="Check connection")
+
+    # activate
+    p_activate = subparsers.add_parser("activate", help="Activate a project")
+    p_activate.add_argument("project", nargs="?", default=None,
+                            help="Project path or name (defaults to current directory)")
+
+    # projects
+    subparsers.add_parser("projects", help="List registered projects")
+
+    args = parser.parse_args()
+    out = Output(json_mode=args.json)
+
+    if not args.command:
+        parser.print_help()
+        sys.exit(0)
+
+    try:
+        if args.command == "find":
+            cmd_find(args, out)
+        elif args.command == "refs":
+            cmd_refs(args, out)
+        elif args.command == "overview":
+            cmd_overview(args, out)
+        elif args.command == "search":
+            cmd_search(args, out)
+        elif args.command == "memory":
+            if not args.memory_cmd:
+                print("Usage: serena memory {list|read|write|delete}")
+                sys.exit(1)
+            cmd_memory(args, out)
+        elif args.command == "edit":
+            if not args.edit_cmd:
+                print("Usage: serena edit {replace|after|before|rename}")
+                sys.exit(1)
+            cmd_edit(args, out)
+        elif args.command == "recipe":
+            cmd_recipe(args, out)
+        elif args.command == "tools":
+            cmd_tools(args, out)
+        elif args.command == "status":
+            cmd_status(args, out)
+        elif args.command == "activate":
+            cmd_activate(args, out)
+        elif args.command == "projects":
+            cmd_projects(args, out)
+        else:
+            parser.print_help()
+    except Exception as e:
+        out.error(str(e))
+
+
+if __name__ == "__main__":
+    main()
