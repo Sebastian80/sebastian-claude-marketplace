@@ -16,10 +16,17 @@
       "category": "development"
     },
     {
-      "name": "serena",
-      "description": "Semantic code intelligence for 30+ languages via LSP. Symbol search, references, refactoring, cross-session memory, project onboarding.",
+      "name": "serena-integration",
+      "description": "Semantic code intelligence for PHP/YAML via LSP. Symbol search, references, refactoring, cross-session memory, project onboarding.",
       "version": "1.0.0",
-      "source": "./plugins/serena",
+      "source": "./plugins/serena-integration",
+      "category": "development"
+    },
+    {
+      "name": "jetbrains-integration",
+      "description": "PhpStorm/IntelliJ IDE integration via MCP. 20 IDE tools + 22 debugger tools with CLI wrappers.",
+      "version": "1.0.0",
+      "source": "./plugins/jetbrains-integration",
       "category": "development"
     },
     {
