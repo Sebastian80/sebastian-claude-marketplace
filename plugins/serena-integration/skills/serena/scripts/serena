@@ -441,7 +441,8 @@ def cmd_memory(args, out: Output):
             else:
                 print(f"Found matches in {len(result)} memories:\n")
                 for match in result:
-                    print(f"  {match['memory']} ({match['matches']} matches)")
+                    count = match.get('match_count', 0)
+                    print(f"  {match['memory']} ({count} matches)")
                     for snippet in match.get('snippets', [])[:2]:
                         snippet_clean = snippet.strip()[:60]
                         print(f"    ...{snippet_clean}...")
@@ -473,12 +474,13 @@ def cmd_memory(args, out: Output):
             out.success(result)
         else:
             print("Memory Statistics:\n")
-            print(f"  Total memories: {result.get('total_count', 0)}")
-            print(f"  Total size: {result.get('total_size_human', 'N/A')}")
+            print(f"  Total memories: {result.get('total_memories', 0)}")
+            total_kb = result.get('total_size_kb', 0)
+            print(f"  Total size: {total_kb:.2f} KB")
             print(f"\n  By folder:")
             for folder, info in result.get('by_folder', {}).items():
-                folder_display = folder if folder else "(root)"
-                print(f"    {folder_display}: {info['count']} memories, {info['size_human']}")
+                size_kb = info.get('size_kb', 0)
+                print(f"    {folder}: {info['count']} memories, {size_kb:.2f} KB")
 
 
 def cmd_edit(args, out: Output):
