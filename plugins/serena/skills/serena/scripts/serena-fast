@@ -60,12 +60,20 @@ call_tool_raw() {
   REQ_ID=$((REQ_ID + 1))
 
   # -N is critical for SSE streaming
+  # Filter by matching request ID to avoid SSE response confusion
+  local CURRENT_ID=$REQ_ID
   timeout 120 curl -s -N -X POST "$SERENA_URL" \
     -H "Content-Type: application/json" \
     -H "Accept: application/json, text/event-stream" \
     -H "mcp-session-id: $SID" \
     -d "{\"jsonrpc\":\"2.0\",\"id\":$REQ_ID,\"method\":\"tools/call\",\"params\":{\"name\":\"$TOOL\",\"arguments\":$ARGS}}" 2>/dev/null \
-  | grep "^data: " | sed 's/^data: //' | head -1
+  | grep "^data: " | sed 's/^data: //' | while read -r line; do
+      # Match response by ID to handle out-of-order SSE events
+      if echo "$line" | jq -e ".id == $CURRENT_ID" >/dev/null 2>&1; then
+        echo "$line"
+        break
+      fi
+    done
 }
 
 # Call tool and format output with jq
@@ -118,6 +126,12 @@ format_symbols() {
       if .relative_path | startswith("vendor/") then "vendor" else "src" end;
     def get_short_path:
       .relative_path | split("/") | .[-2:] | join("/");
+    def format_body:
+      if .body and .body != "" then
+        "\n    \u001b[90m--- body ---\u001b[0m\n    " + (.body | split("\n") | .[0:15] | join("\n    ")) +
+        (if (.body | split("\n") | length) > 15 then "\n    \u001b[90m... (truncated)\u001b[0m" else "" end)
+      else ""
+      end;
 
     if type == "array" and length > 0 then
       map(. + { root: get_root, bundle: get_bundle }) |
@@ -127,7 +141,7 @@ format_symbols() {
       (group_by(.bundle) | sort_by(.[0].bundle) | .[] |
         "\u001b[33m\(.[0].bundle)/\u001b[0m",
         (.[:12][] |
-          "  \(.kind | pad(10)) \(.name_path | pad(35)) \(get_short_path):\(.body_location.start_line // "?")"
+          "  \(.kind | pad(10)) \(.name_path | pad(35)) \(get_short_path):\(.body_location.start_line // "?")" + format_body
         )
       )
     elif type == "string" then
@@ -146,16 +160,30 @@ format_symbols() {
 
 cmd_find() {
   local PATTERN="$1"
+
+  # Check for empty or whitespace-only pattern
+  if [[ -z "${PATTERN// }" ]]; then
+    echo "Usage: serena-fast find <pattern> [--kind TYPE] [--path dir] [--body] [--depth n]" >&2
+    echo "Valid --kind values: namespace, class, method, property, interface, function, constant" >&2
+    return 1
+  fi
+
   shift
 
   local KIND="" PATH_ARG="" BODY="false" DEPTH="0"
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --kind|-k) KIND="$2"; shift 2 ;;
-      --path|-p) PATH_ARG="$2"; shift 2 ;;
+      --kind|-k)
+        [[ -z "$2" || "$2" == -* ]] && { echo "ERROR: --kind requires a value" >&2; return 1; }
+        KIND="$2"; shift 2 ;;
+      --path|-p)
+        [[ -z "$2" || "$2" == -* ]] && { echo "ERROR: --path requires a value" >&2; return 1; }
+        PATH_ARG="$2"; shift 2 ;;
       --body|-b) BODY="true"; shift ;;
-      --depth|-d) DEPTH="$2"; shift 2 ;;
+      --depth|-d)
+        [[ -z "$2" || "$2" == -* ]] && { echo "ERROR: --depth requires a value" >&2; return 1; }
+        DEPTH="$2"; shift 2 ;;
       *) shift ;;
     esac
   done
@@ -163,6 +191,7 @@ cmd_find() {
   # Map kind names to LSP symbol kinds
   local KIND_ARR=""
   case "$KIND" in
+    "") ;;  # Empty is OK (no filter)
     namespace) KIND_ARR="[3]" ;;
     class) KIND_ARR="[5]" ;;
     method) KIND_ARR="[6]" ;;
@@ -170,6 +199,11 @@ cmd_find() {
     interface) KIND_ARR="[11]" ;;
     function) KIND_ARR="[12]" ;;
     constant) KIND_ARR="[14]" ;;
+    *)
+      echo "ERROR: Invalid --kind value: '$KIND'" >&2
+      echo "Valid: namespace, class, method, property, interface, function, constant" >&2
+      return 1
+      ;;
   esac
 
   # Build arguments
@@ -178,7 +212,16 @@ cmd_find() {
   [[ -n "$PATH_ARG" ]] && ARGS="$ARGS,\"relative_path\":\"$PATH_ARG\""
   ARGS="$ARGS}"
 
-  call_tool "find_symbol" "$ARGS" | format_symbols
+  local RESULT
+  RESULT=$(call_tool "find_symbol" "$ARGS")
+
+  # Check if result is an error message
+  if [[ "$RESULT" == Error* ]]; then
+    echo "$RESULT" >&2
+    return 1
+  fi
+
+  echo "$RESULT" | format_symbols
 }
 
 cmd_refs() {
@@ -190,9 +233,20 @@ cmd_refs() {
     return 1
   fi
 
-  call_tool "find_referencing_symbols" "{\"name_path\":\"$SYMBOL\",\"relative_path\":\"$FILE\"}" | jq -r '
-    if type == "array" then
+  local RESULT
+  RESULT=$(call_tool "find_referencing_symbols" "{\"name_path\":\"$SYMBOL\",\"relative_path\":\"$FILE\"}")
+
+  # Check if result is an error message
+  if [[ "$RESULT" == Error* ]]; then
+    echo "$RESULT" >&2
+    return 1
+  fi
+
+  echo "$RESULT" | jq -r '
+    if type == "array" and length > 0 then
       .[] | "\(.relative_path):\(.body_location.start_line // "?")"
+    elif type == "array" then
+      "No references found"
     else
       .
     end
@@ -207,9 +261,28 @@ cmd_overview() {
     return 1
   fi
 
-  call_tool "get_symbols_overview" "{\"relative_path\":\"$FILE\"}" | jq -r '
+  local RESULT
+  RESULT=$(call_tool "get_symbols_overview" "{\"relative_path\":\"$FILE\"}")
+
+  # Check if result is an error message
+  if [[ "$RESULT" == Error* ]]; then
+    echo "$RESULT" >&2
+    return 1
+  fi
+
+  echo "$RESULT" | jq -r '
+    def kind_name:
+      if . == 3 then "Namespace"
+      elif . == 5 then "Class"
+      elif . == 6 then "Method"
+      elif . == 7 then "Property"
+      elif . == 11 then "Interface"
+      elif . == 12 then "Function"
+      elif . == 14 then "Constant"
+      else "Kind\(.)"
+      end;
     if type == "array" then
-      .[] | "\(.kind_name // .kind) \(.name) :\(.start_line // "")"
+      .[] | "\(.kind | kind_name | .[0:12]) \(.name_path)"
     else
       .
     end
@@ -218,24 +291,55 @@ cmd_overview() {
 
 cmd_search() {
   local PATTERN="$1"
+
+  # Check for empty or whitespace-only pattern
+  if [[ -z "${PATTERN// }" ]]; then
+    echo "Usage: serena-fast search <regex> [--path dir] [--glob *.php] [--limit N]" >&2
+    return 1
+  fi
+
   shift
 
-  local PATH_ARG="" GLOB=""
+  local PATH_ARG="" GLOB="" LIMIT="50"
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --path|-p) PATH_ARG="$2"; shift 2 ;;
-      --glob|-g) GLOB="$2"; shift 2 ;;
+      --path|-p)
+        [[ -z "$2" || "$2" == -* ]] && { echo "ERROR: --path requires a value" >&2; return 1; }
+        PATH_ARG="$2"; shift 2 ;;
+      --glob|-g)
+        [[ -z "$2" || "$2" == -* ]] && { echo "ERROR: --glob requires a value" >&2; return 1; }
+        GLOB="$2"; shift 2 ;;
+      --limit|-l)
+        [[ -z "$2" || "$2" == -* ]] && { echo "ERROR: --limit requires a value" >&2; return 1; }
+        LIMIT="$2"; shift 2 ;;
       *) shift ;;
     esac
   done
 
-  local ARGS="{\"pattern\":\"$PATTERN\""
+  local ARGS="{\"substring_pattern\":\"$PATTERN\""
   [[ -n "$PATH_ARG" ]] && ARGS="$ARGS,\"relative_path\":\"$PATH_ARG\""
   [[ -n "$GLOB" ]] && ARGS="$ARGS,\"file_pattern\":\"$GLOB\""
   ARGS="$ARGS}"
 
-  call_tool "search_for_pattern" "$ARGS"
+  local RESULT
+  RESULT=$(call_tool "search_for_pattern" "$ARGS")
+
+  # Check if result is an error message
+  if [[ "$RESULT" == Error* ]]; then
+    echo "$RESULT" >&2
+    return 1
+  fi
+
+  # Truncate output if too large
+  local LINE_COUNT=$(echo "$RESULT" | wc -l)
+  if [[ $LINE_COUNT -gt $LIMIT ]]; then
+    echo "$RESULT" | head -n "$LIMIT"
+    echo ""
+    echo "... truncated ($LINE_COUNT total lines, showing $LIMIT. Use --limit N for more)"
+  else
+    echo "$RESULT"
+  fi
 }
 
 cmd_memory() {
@@ -245,14 +349,32 @@ cmd_memory() {
       ;;
     read)
       [[ -z "$2" ]] && { echo "Usage: serena-fast memory read <name>" >&2; return 1; }
-      call_tool "read_memory" "{\"name\":\"$2\"}"
+      call_tool "read_memory" "{\"memory_file_name\":\"$2\"}"
       ;;
     write)
       [[ -z "$2" ]] || [[ -z "$3" ]] && { echo "Usage: serena-fast memory write <name> <content>" >&2; return 1; }
-      call_tool "write_memory" "{\"name\":\"$2\",\"content\":\"$3\"}"
+      # Use jq to properly escape JSON special characters in content
+      local ARGS
+      ARGS=$(jq -nc --arg n "$2" --arg c "$3" '{memory_file_name:$n,content:$c}')
+      call_tool "write_memory" "$ARGS"
+      ;;
+    edit)
+      [[ -z "$2" ]] || [[ -z "$3" ]] || [[ -z "$4" ]] && { echo "Usage: serena-fast memory edit <name> <needle> <replacement>" >&2; return 1; }
+      local ARGS
+      ARGS=$(jq -nc --arg n "$2" --arg needle "$3" --arg repl "$4" '{memory_file_name:$n,needle:$needle,repl:$repl,mode:"literal"}')
+      call_tool "edit_memory" "$ARGS"
+      ;;
+    delete)
+      [[ -z "$2" ]] && { echo "Usage: serena-fast memory delete <name>" >&2; return 1; }
+      call_tool "delete_memory" "{\"memory_file_name\":\"$2\"}"
       ;;
     *)
-      echo "Usage: serena-fast memory [list|read <name>|write <name> <content>]" >&2
+      echo "Usage: serena-fast memory [list|read|write|edit|delete]" >&2
+      echo "  list                         - List all memories" >&2
+      echo "  read <name>                  - Read a memory" >&2
+      echo "  write <name> <content>       - Write/create a memory" >&2
+      echo "  edit <name> <needle> <repl>  - Edit a memory (literal replace)" >&2
+      echo "  delete <name>                - Delete a memory" >&2
       ;;
   esac
 }
@@ -266,9 +388,56 @@ cmd_activate() {
   call_tool "activate_project" "{\"project\":\"$PROJECT\"}"
 }
 
+cmd_file() {
+  local PATTERN="$1"
+  local PATH_ARG="${2:-.}"
+
+  if [[ -z "${PATTERN// }" ]]; then
+    echo "Usage: serena-fast file <pattern> [path]" >&2
+    echo "Example: serena-fast file '*Controller*' src/" >&2
+    return 1
+  fi
+
+  local RESULT
+  RESULT=$(call_tool "find_file" "{\"file_mask\":\"$PATTERN\",\"relative_path\":\"$PATH_ARG\"}")
+
+  # Check if result is an error message
+  if [[ "$RESULT" == Error* ]]; then
+    echo "$RESULT" >&2
+    return 1
+  fi
+
+  echo "$RESULT" | jq -r '.files // [] | .[]' 2>/dev/null
+}
+
 cmd_listdir() {
   local PATH_ARG="${1:-.}"
-  call_tool "list_dir" "{\"relative_path\":\"$PATH_ARG\"}" | jq -r '.[]' 2>/dev/null
+  local RECURSIVE="false"
+
+  # Check for -r/--recursive flag
+  if [[ "$2" == "-r" ]] || [[ "$2" == "--recursive" ]]; then
+    RECURSIVE="true"
+  fi
+
+  local RESULT
+  RESULT=$(call_tool "list_dir" "{\"relative_path\":\"$PATH_ARG\",\"recursive\":$RECURSIVE}")
+
+  # Check if result is an error message
+  if [[ "$RESULT" == Error* ]] || [[ "$RESULT" == "null" ]]; then
+    echo "Error: Cannot list '$PATH_ARG'" >&2
+    return 1
+  fi
+
+  echo "$RESULT" | jq -r '
+    if type == "object" and .directories then
+      (.directories // [] | .[] | "\(.)/"),
+      (.files // [] | .[])
+    elif type == "array" then
+      .[]
+    else
+      .
+    end
+  ' 2>/dev/null
 }
 
 # ============================================================================
@@ -321,31 +490,42 @@ case "${1:-}" in
     shift
     cmd_listdir "$@"
     ;;
+  file)
+    shift
+    cmd_file "$@"
+    ;;
   ""|--help|-h)
     cat << 'HELP'
-serena-fast v2.0: Ultra-fast Serena CLI (pure bash + jq)
+serena-fast v2.1: Ultra-fast Serena CLI (pure bash + jq)
 
 Commands:
-  find <pattern> [--kind class|method|interface] [--path dir] [--body] [--depth n]
+  find <pattern> [--kind TYPE] [--path dir] [--body] [--depth n]
+       TYPE: namespace|class|method|property|interface|function|constant
   refs <Symbol/method> <file.php>
   overview <file.php>
-  search <regex> [--path dir] [--glob *.php]
-  memory [list|read <name>|write <name> <content>]
-  status
-  activate [path]
-  ls [path]
+  search <regex> [--path dir] [--glob *.php] [--limit N]
+  file <pattern> [path]          Find files by name pattern (glob)
+  memory list                    List all memories
+  memory read <name>             Read a memory
+  memory write <name> <content>  Write/create a memory
+  memory edit <name> <find> <replace>  Edit memory content
+  memory delete <name>           Delete a memory
+  status                         Show current config
+  activate [path]                Activate project
+  ls [path] [-r]                 List directory (-r for recursive)
   --reset    Clear session
   --init     Force new session
   --raw      Raw JSON output
 
 Examples:
-  serena-fast find Controller --kind class
-  serena-fast find Payment --path src/Meyer/
-  serena-fast find Customer --path vendor/oro/
+  serena-fast find Controller --kind class --path src/
+  serena-fast find Payment --body --path src/Meyer/
   serena-fast refs "Customer/getName" src/Entity/Customer.php
   serena-fast overview src/Entity/Order.php
-  serena-fast search "implements.*Interface" --path src/
-  serena-fast memory list
+  serena-fast search "implements.*Interface" --path src/ --limit 20
+  serena-fast file "*Controller*" src/
+  serena-fast memory write notes "My notes here"
+  serena-fast ls src/Meyer/ -r
 HELP
     ;;
   *)
