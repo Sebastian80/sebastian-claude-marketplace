@@ -26,6 +26,39 @@ class PathNotFoundError(WorkflowError):
         )
 
 
+class WorkflowNotFoundError(WorkflowError):
+    """Issue type not in workflow store."""
+    def __init__(self, issue_type: str):
+        self.issue_type = issue_type
+        super().__init__(f"Workflow for '{issue_type}' not found")
+
+
+class DiscoveryError(WorkflowError):
+    """Workflow discovery failed."""
+    def __init__(self, issue_key: str, stuck_at: str, discovered_states: set[str]):
+        self.issue_key = issue_key
+        self.stuck_at = stuck_at
+        self.discovered_states = discovered_states
+        super().__init__(
+            f"Discovery failed for {issue_key}. Stuck at '{stuck_at}'. "
+            f"Discovered {len(discovered_states)} states."
+        )
+
+
+class TransitionFailedError(WorkflowError):
+    """Transition execution failed."""
+    def __init__(self, issue_key: str, transition: Transition,
+                 current_state: str, reason: str):
+        self.issue_key = issue_key
+        self.transition = transition
+        self.current_state = current_state
+        self.reason = reason
+        super().__init__(
+            f"Transition '{transition.name}' failed for {issue_key} "
+            f"at state '{current_state}': {reason}"
+        )
+
+
 @dataclass
 class Transition:
     """Single transition from one state to another."""
@@ -250,3 +283,115 @@ class WorkflowStore:
             self._save()
             return True
         return False
+
+
+def discover_workflow(client, issue_key: str, verbose: bool = False) -> WorkflowGraph:
+    """
+    Walk issue through all reachable states to map complete workflow.
+
+    Args:
+        client: Jira client instance
+        issue_key: Issue to use for discovery
+        verbose: Print progress during discovery
+
+    Returns:
+        Complete WorkflowGraph for this issue type
+    """
+    # Get issue info
+    issue = client.issue(issue_key, fields="status,issuetype")
+    issue_type = issue["fields"]["issuetype"]["name"]
+    issue_type_id = issue["fields"]["issuetype"]["id"]
+    original_state = issue["fields"]["status"]["name"]
+
+    if verbose:
+        print(f"Discovering workflow for '{issue_type}' from {issue_key}")
+        print(f"Starting state: {original_state}")
+
+    graph = WorkflowGraph(
+        issue_type=issue_type,
+        issue_type_id=issue_type_id,
+        discovered_from=issue_key,
+        discovered_at=datetime.now()
+    )
+
+    # BFS through all states
+    visited = set()
+    queue = deque([original_state])
+
+    while queue:
+        current_state = queue.popleft()
+
+        if current_state in visited:
+            continue
+        visited.add(current_state)
+
+        if verbose:
+            print(f"  Mapping state: {current_state}")
+
+        # Get transitions from current state
+        # First, we need to BE in this state
+        issue = client.issue(issue_key, fields="status")
+        actual_state = issue["fields"]["status"]["name"]
+
+        if actual_state != current_state:
+            # Try to navigate to this state
+            if graph.states:  # Only if we have some transitions mapped
+                try:
+                    path = graph.path_to(actual_state, current_state)
+                    for t in path:
+                        client.set_issue_status(issue_key, t.to)
+                except PathNotFoundError:
+                    if verbose:
+                        print(f"    Cannot reach {current_state}, skipping")
+                    continue
+
+        # Now get available transitions
+        response = client.get(f"/rest/api/2/issue/{issue_key}/transitions")
+        transitions = []
+        for t in response.get("transitions", []):
+            to_state = t.get("to", {})
+            if isinstance(to_state, dict):
+                to_name = to_state.get("name", "")
+            else:
+                to_name = str(to_state)
+
+            transitions.append(Transition(
+                id=t["id"],
+                name=t["name"],
+                to=to_name
+            ))
+
+            # Queue unvisited states
+            if to_name and to_name not in visited:
+                queue.append(to_name)
+
+        graph.add_state(current_state, transitions)
+
+        # Move to an unvisited state if possible
+        for t in transitions:
+            if t.to not in visited:
+                try:
+                    client.set_issue_status(issue_key, t.to)
+                    break
+                except Exception:
+                    continue
+
+    # Try to return to original state
+    if verbose:
+        print(f"  Returning to original state: {original_state}")
+
+    try:
+        issue = client.issue(issue_key, fields="status")
+        current = issue["fields"]["status"]["name"]
+        if current != original_state:
+            path = graph.path_to(current, original_state)
+            for t in path:
+                client.set_issue_status(issue_key, t.to)
+    except (PathNotFoundError, Exception) as e:
+        if verbose:
+            print(f"    Warning: Could not return to original state: {e}")
+
+    if verbose:
+        print(f"✓ Discovered {len(graph.states)} states")
+
+    return graph
