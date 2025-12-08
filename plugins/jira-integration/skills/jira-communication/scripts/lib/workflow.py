@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Jira workflow graph and transition logic."""
 
+import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from collections import deque
+from pathlib import Path
 from typing import Optional
 
 
@@ -186,3 +188,65 @@ class WorkflowGraph:
             discovered_from=data.get("discovered_from"),
             discovered_at=discovered_at
         )
+
+
+class WorkflowStore:
+    """Persistence layer for workflow graphs."""
+
+    def __init__(self, path: Optional[Path] = None):
+        if path is None:
+            # Default to references/workflows.json relative to this file
+            path = Path(__file__).parent.parent.parent / "references" / "workflows.json"
+        self.path = path
+        self._data = self._load()
+
+    def _load(self) -> dict:
+        """Load workflows from JSON file."""
+        if not self.path.exists():
+            return {"_meta": {"version": 1, "updated_at": None}, "issue_types": {}}
+
+        with open(self.path, "r") as f:
+            return json.load(f)
+
+    def _save(self) -> None:
+        """Save workflows to JSON file."""
+        self._data["_meta"]["updated_at"] = datetime.now().isoformat()
+
+        # Ensure parent directory exists
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Write atomically
+        tmp_path = self.path.with_suffix(".tmp")
+        with open(tmp_path, "w") as f:
+            json.dump(self._data, f, indent=2)
+        tmp_path.rename(self.path)
+
+    def get(self, issue_type: str) -> Optional[WorkflowGraph]:
+        """Load workflow for issue type, or None if not found."""
+        if issue_type not in self._data.get("issue_types", {}):
+            return None
+
+        return WorkflowGraph.from_dict(
+            issue_type,
+            self._data["issue_types"][issue_type]
+        )
+
+    def save(self, graph: WorkflowGraph) -> None:
+        """Save/update workflow graph."""
+        if "issue_types" not in self._data:
+            self._data["issue_types"] = {}
+
+        self._data["issue_types"][graph.issue_type] = graph.to_dict()
+        self._save()
+
+    def list_types(self) -> list[str]:
+        """List all known issue types."""
+        return list(self._data.get("issue_types", {}).keys())
+
+    def delete(self, issue_type: str) -> bool:
+        """Remove workflow mapping."""
+        if issue_type in self._data.get("issue_types", {}):
+            del self._data["issue_types"][issue_type]
+            self._save()
+            return True
+        return False
