@@ -8,6 +8,7 @@
 # ///
 """Jira search operations - query issues using JQL."""
 
+import re
 import sys
 from pathlib import Path
 
@@ -20,6 +21,38 @@ if _lib_path.exists():
     sys.path.insert(0, str(_lib_path.parent))
 
 import click
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# JQL Pre-processor (workaround for atlassian-python-api escaping bug)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _preprocess_jql(jql: str) -> str:
+    """Convert != and !~ operators to JQL-compatible NOT equivalents.
+
+    The atlassian-python-api library incorrectly escapes ! to \\! which
+    causes JQL parse errors. This converts:
+      field != value  →  NOT field = value
+      field !~ value  →  NOT field ~ value
+
+    Also handles pre-escaped \\!= and \\!~ from shell escaping.
+    """
+    # Pattern: (field) (!= or !~ or \!= or \!~) (value)
+    # field: word chars, possibly with dots/brackets for custom fields
+    # The \\? handles optional backslash from shell escaping
+
+    # Match: field != value, field !~ value, field \!= value, field \!~ value
+    pattern = r'(\b[\w.\[\]]+)\s*\\?(!~|!=)\s*'
+
+    def replace_op(match):
+        field = match.group(1)
+        op = match.group(2)
+        new_op = '~' if op == '!~' else '='
+        return f'NOT {field} {new_op} '
+
+    return re.sub(pattern, replace_op, jql)
+
+
 from lib.client import get_jira_client
 from lib.output import format_output, format_table, error
 
@@ -88,8 +121,11 @@ def query(ctx, jql: str, max_results: int, fields: str):
         # Parse fields
         field_list = [f.strip() for f in fields.split(',')]
 
+        # Pre-process JQL to work around atlassian-python-api escaping bug
+        processed_jql = _preprocess_jql(jql)
+
         # Execute search
-        results = client.jql(jql, limit=max_results, fields=field_list)
+        results = client.jql(processed_jql, limit=max_results, fields=field_list)
         issues = results.get('issues', [])
 
         if ctx.obj['json']:

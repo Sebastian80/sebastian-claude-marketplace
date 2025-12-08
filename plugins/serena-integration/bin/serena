@@ -1,0 +1,67 @@
+#!/bin/bash
+# Unified Serena CLI wrapper for Claude Code
+# Usage: serena <command> [args]
+
+PLUGIN_DIR="$(dirname "$(dirname "$(realpath "$0")")")"
+SERENA_BASE="$PLUGIN_DIR/skills/serena/scripts"
+
+cmd="$1"
+shift 2>/dev/null
+
+case "$cmd" in
+  # Fast commands (serena-fast)
+  find|refs|overview|status|search)
+    exec "$SERENA_BASE/serena-fast" "$cmd" "$@"
+    ;;
+
+  # Full commands (serena)
+  recipe|memory|edit|tools|activate)
+    exec "$SERENA_BASE/serena" "$cmd" "$@"
+    ;;
+
+  # Direct passthrough for any other command
+  fast)
+    exec "$SERENA_BASE/serena-fast" "$@"
+    ;;
+
+  full)
+    exec "$SERENA_BASE/serena" "$@"
+    ;;
+
+  # Help
+  ""|help|-h|--help)
+    echo "Serena CLI - Semantic Code Navigation"
+    echo ""
+    echo "Usage: serena <command> [args]"
+    echo ""
+    echo "Fast commands (serena-fast):"
+    echo "  find      Find symbols by pattern"
+    echo "  refs      Find references to a symbol"
+    echo "  overview  Get file structure"
+    echo "  status    Check Serena connection"
+    echo "  search    Regex search in files"
+    echo ""
+    echo "Full commands (serena):"
+    echo "  recipe    Run pre-built operations (entities, controllers, etc.)"
+    echo "  memory    Read/write persistent storage"
+    echo "  edit      Symbol-based code editing"
+    echo "  tools     List available Serena tools"
+    echo "  activate  Activate a project"
+    echo ""
+    echo "Direct passthrough:"
+    echo "  fast      Pass args directly to serena-fast"
+    echo "  full      Pass args directly to serena"
+    echo ""
+    echo "Examples:"
+    echo "  serena find Customer --kind class"
+    echo "  serena refs \"Customer/getName\" src/Entity/Customer.php"
+    echo "  serena recipe entities"
+    echo "  serena memory list"
+    exit 0
+    ;;
+
+  *)
+    # Default: try serena-fast first, fall back to full serena
+    exec "$SERENA_BASE/serena-fast" "$cmd" "$@"
+    ;;
+esac

@@ -4,7 +4,7 @@ description: |
   Semantic code navigation via LSP for 30+ languages. REPLACES grep/glob for code search.
   Use when finding classes, methods, references, or understanding code structure.
   Triggers: "find class X", "who calls Y", "where is Z defined", "show structure of"
-tools: Bash, Read
+tools: Bash(/home/sebastian/.local/bin/serena:*), Read
 skills: serena:serena
 model: inherit
 color: cyan
@@ -22,18 +22,17 @@ You have access to LSP-powered semantic search. Use it.
 
 ## Quick Start
 
+**CLI wrapper:** `/home/sebastian/.local/bin/serena`
+
 ```bash
-# MANDATORY: Set up paths first
-SERENA=~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena-fast
-SERENA_FULL=~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena
-
 # Health check
-$SERENA status
+/home/sebastian/.local/bin/serena status
 
-# Then use $SERENA for all searches
-$SERENA find Customer --kind class --path src/
-$SERENA refs "Customer/getName" src/Entity/Customer.php
-$SERENA overview src/Entity/Customer.php
+# All searches use the same wrapper
+/home/sebastian/.local/bin/serena find Customer --kind class --path src/
+/home/sebastian/.local/bin/serena refs "Customer/getName" src/Entity/Customer.php
+/home/sebastian/.local/bin/serena overview src/Entity/Customer.php
+/home/sebastian/.local/bin/serena recipe entities
 ```
 
 ## Report Format

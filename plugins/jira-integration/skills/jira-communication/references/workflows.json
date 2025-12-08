@@ -1,14 +1,60 @@
 {
   "_meta": {
     "version": 1,
-    "updated_at": "2025-12-08T17:11:34.789179"
+    "updated_at": "2025-12-08T17:21:16.266575"
   },
   "issue_types": {
     "Sub: Technical task": {
       "id": "13",
       "discovered_from": "HMKG-2064",
-      "discovered_at": "2025-12-08T17:11:33.489226",
+      "discovered_at": "2025-12-08T17:21:13.451271",
       "states": {
+        "Geschlossen": [
+          {
+            "id": "631",
+            "name": "Reopen",
+            "to": "Neuer\u00f6ffnet"
+          }
+        ],
+        "Neuer\u00f6ffnet": [
+          {
+            "id": "681",
+            "name": "Start working",
+            "to": "In Arbeit"
+          },
+          {
+            "id": "691",
+            "name": "Re-analyze",
+            "to": "Analyse"
+          },
+          {
+            "id": "711",
+            "name": "Require feedback",
+            "to": "Waiting"
+          },
+          {
+            "id": "701",
+            "name": "Postpone",
+            "to": "New"
+          }
+        ],
+        "In Arbeit": [
+          {
+            "id": "651",
+            "name": "Send to QA",
+            "to": "Waiting for QA"
+          },
+          {
+            "id": "41",
+            "name": "Stop working",
+            "to": "Offen"
+          },
+          {
+            "id": "51",
+            "name": "Require feedback",
+            "to": "Waiting"
+          }
+        ],
         "Waiting for QA": [
           {
             "id": "721",
@@ -65,11 +111,16 @@
             "to": "Fertig"
           }
         ],
-        "Geschlossen": [
+        "Fertig": [
           {
-            "id": "631",
+            "id": "641",
             "name": "Reopen",
             "to": "Neuer\u00f6ffnet"
+          },
+          {
+            "id": "781",
+            "name": "Close",
+            "to": "Geschlossen"
           }
         ]
       }

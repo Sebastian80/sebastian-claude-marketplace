@@ -13,25 +13,25 @@ Quick session restoration with full context recovery.
 
 ### 1. Activate & Check Status
 ```bash
-~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena status
+/home/sebastian/.local/bin/serena status
 ```
 
 If no project active or wrong project:
 ```bash
-~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena activate "$(pwd)"
+/home/sebastian/.local/bin/serena activate "$(pwd)"
 ```
 
 ### 2. List Available Memories
 ```bash
-~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena memory list
+/home/sebastian/.local/bin/serena memory list
 ```
 
 ### 3. Load Core Memories (in parallel)
 ```bash
-~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena memory read session_context
-~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena memory read task_progress
-~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena memory read learnings
-~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena memory read project_overview
+/home/sebastian/.local/bin/serena memory read session_context
+/home/sebastian/.local/bin/serena memory read task_progress
+/home/sebastian/.local/bin/serena memory read learnings
+/home/sebastian/.local/bin/serena memory read project_overview
 ```
 
 Read any memory that exists from the list.

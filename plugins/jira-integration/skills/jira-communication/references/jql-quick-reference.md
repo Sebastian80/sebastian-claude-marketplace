@@ -167,6 +167,25 @@ project = PROJ ORDER BY priority DESC, created ASC
 - Project keys: `project = PROJ`
 - Function calls: `assignee = currentUser()`
 
+## Known Issues
+
+### `!=` and `!~` Operators (Fixed)
+
+The `atlassian-python-api` library incorrectly escapes `!` in JQL queries. This is **automatically fixed** by `jira-search.py` which pre-processes queries to convert:
+
+- `status != Done` → `NOT status = Done`
+- `summary !~ "test"` → `NOT summary ~ "test"`
+
+You can use `!=` and `!~` normally - they will be converted automatically.
+
+**Manual workarounds** (for other tools without the fix):
+
+| Instead of | Use |
+|------------|-----|
+| `field != value` | `NOT field = value` |
+| `field != value` | `field not in (value)` |
+| `field !~ value` | `NOT field ~ value` |
+
 ## Sources
 
 - [JQL Operators](https://support.atlassian.com/jira-software-cloud/docs/jql-operators/)

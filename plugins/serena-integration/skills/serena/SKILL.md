@@ -26,8 +26,8 @@ If you catch yourself thinking ANY of these, STOP:
 - "I know the file path already" → WRONG. Still use `$SERENA overview`.
 - "This is a simple search" → WRONG. Simple searches benefit MOST from semantic tools.
 - "I'll use the Task/Explore agent" → WRONG. Use Serena directly or serena-explore agent.
-- "Let me glob for files first" → WRONG. `$SERENA find` searches semantically.
-- "serena command not found" → WRONG. You forgot to set `$SERENA` variable. See Setup section.
+- "Let me glob for files first" → WRONG. `serena-fast find` searches semantically.
+- "serena command not found" → WRONG. You must use the FULL PATH. See Setup section.
 
 **If a Serena operation exists for your task, you MUST use it.**
 </EXTREMELY-IMPORTANT>
@@ -47,7 +47,7 @@ If you catch yourself thinking ANY of these, STOP:
 
 ## When to Use vs When NOT to Use
 
-| ✅ USE SERENA | ❌ USE GREP INSTEAD |
+| ✅ USE SERENA | ❌ DON'T USE SERENA |
 |---------------|---------------------|
 | Finding class/method/function definitions | Searching template files (.twig, .html) |
 | Tracing who calls a method ("find refs") | Finding text in comments |
@@ -55,9 +55,68 @@ If you catch yourself thinking ANY of these, STOP:
 | Navigating languages configured in `.serena/project.yml` | Finding strings/literals across all files |
 | Refactoring by symbol path | Log files, .env files |
 | Cross-file symbol references | Hybrid search (code + config) |
+| PHP classes, methods, interfaces | **JavaScript files** (use JetBrains/Grep) |
+| YAML service definitions | AMD/RequireJS modules |
 
 **Rule:** Serena for CONFIGURED LANGUAGES. Grep for UNCONFIGURED/TEMPLATES/COMMENTS.
 **Note:** Run `$SERENA status` to see active languages. Edit `.serena/project.yml` to add more.
+
+## JavaScript Navigation (Special Case)
+
+**Serena does NOT support JavaScript in this project.** The TypeScript LSP is disabled because:
+- Oro uses AMD/RequireJS module pattern (`define(function(require) {...})`)
+- LSP sees these as single `define() callback` functions, not classes/components
+- Symbol search, references, and navigation don't work meaningfully
+
+### JS Navigation Fallback Strategy
+
+Use this **priority order** for JavaScript files:
+
+| Priority | Tool | When to Use | Example |
+|----------|------|-------------|---------|
+| **1st** | JetBrains MCP | PhpStorm open (better AMD heuristics) | `mcp__jetbrains__search_in_files_by_text` |
+| **2nd** | Grep/Glob | JetBrains unavailable or failed | `Grep` with `*.js` glob |
+| **3rd** | Read | Need full file with line numbers | `Read` tool |
+
+### JetBrains MCP for JavaScript
+
+```bash
+# Search JS files by content
+mcp__jetbrains__search_in_files_by_text(searchText="BaseComponent", fileMask="*.js")
+
+# Search with regex
+mcp__jetbrains__search_in_files_by_regex(regexPattern="extend\\(", fileMask="*.js")
+
+# Find JS files by name
+mcp__jetbrains__find_files_by_name_keyword(nameKeyword="component")
+
+# Get symbol info (may work better than Serena for AMD)
+mcp__jetbrains__get_symbol_info(filePath="src/path/to/file.js", line=20, column=15)
+```
+
+### Native Tools Fallback for JavaScript
+
+```bash
+# Find JS files
+Glob pattern="src/**/*.js"
+
+# Search content in JS
+Grep pattern="BaseComponent" glob="*.js"
+
+# Read with line numbers (for editing)
+Read file_path="/full/path/to/file.js"
+```
+
+### Detection: Is JetBrains Available?
+
+**Try JetBrains first.** If the MCP call fails or returns an error, fall back to native tools.
+No explicit detection needed - just handle failures gracefully.
+
+```
+1. Try: mcp__jetbrains__search_in_files_by_text(...)
+2. If success → use result
+3. If error/timeout → fall back to Grep/Glob/Read
+```
 
 ## When to Use JetBrains MCP Instead
 
@@ -162,29 +221,23 @@ mcp__jetbrains__get_file_problems(filePath="src/Service/OrderService.php")
 
 **Note:** Check `.serena/project.yml` for which languages are configured in your project.
 
-## Setup - CRITICAL
+## Setup - CLI Wrapper
 
-**You MUST use the full path. Bare `serena` commands will NOT work.**
+**Use the unified CLI wrapper:** `/home/sebastian/.local/bin/serena`
 
-Two CLI options available:
+The wrapper automatically routes commands:
+- Fast commands (`find`, `refs`, `overview`, `status`, `search`) → serena-fast
+- Full commands (`recipe`, `memory`, `edit`, `tools`, `activate`) → full serena
 
-| Script | Speed | Use Case |
-|--------|-------|----------|
-| `$SERENA` | ~90ms | Fast bash+jq wrapper (recommended) |
-| `$SERENA_FULL` | ~200ms | Full Python client, recipes, stdin |
+When this document shows `$SERENA`, substitute: `/home/sebastian/.local/bin/serena`
 
+**EXAMPLES:**
 ```bash
-# MANDATORY: Define these variables before ANY Serena command
-SERENA=~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena-fast
-SERENA_FULL=~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena
-
-# Then use $SERENA for all commands:
-$SERENA find Customer
-$SERENA refs "Customer/getName" src/Entity/Customer.php
-$SERENA overview src/Entity/Customer.php
-
-# Use $SERENA_FULL for recipes:
-$SERENA_FULL recipe entities
+# All commands use the same wrapper:
+/home/sebastian/.local/bin/serena find Customer
+/home/sebastian/.local/bin/serena refs "Customer/getName" src/Entity/Customer.php
+/home/sebastian/.local/bin/serena recipe entities
+/home/sebastian/.local/bin/serena memory list
 ```
 
 ## MANDATORY First Action
@@ -192,54 +245,50 @@ $SERENA_FULL recipe entities
 Before ANY code exploration, run this:
 
 ```bash
-SERENA=~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena-fast
-$SERENA status
+/home/sebastian/.local/bin/serena status
 ```
 
 **Did not run this first? STOP. Run it NOW.**
 
 ## Quick Reference (Cheat Sheet)
 
+All commands use the same wrapper - it routes automatically.
+
 | Task | Command |
 |------|---------|
-| Find class/symbol | `$SERENA find Customer` |
-| Find with body | `$SERENA find Customer --body` |
-| Find only classes | `$SERENA find Customer --kind class` |
-| Find only methods | `$SERENA find "get*" --kind method` |
-| Who calls this? | `$SERENA refs ClassName file.php` |
-| Who calls method? | `$SERENA refs "Class/method" file.php` |
-| File structure | `$SERENA overview file.php` |
-| Find entities | `$SERENA_FULL recipe entities` |
-| Find controllers | `$SERENA_FULL recipe controllers` |
-| Find listeners | `$SERENA_FULL recipe listeners` |
-| Regex search | `$SERENA search "pattern" --glob "src/**/*.php"` |
-| Read memory | `$SERENA_FULL memory read name` |
-| Write memory | `$SERENA_FULL memory write name "content"` |
-| Check status | `$SERENA status` |
+| Find class/symbol | `serena find Customer` |
+| Find with body | `serena find Customer --body` |
+| Find only classes | `serena find Customer --kind class` |
+| Find only methods | `serena find "get*" --kind method` |
+| Who calls this? | `serena refs ClassName file.php` |
+| Who calls method? | `serena refs "Class/method" file.php` |
+| File structure | `serena overview file.php` |
+| Check status | `serena status` |
+| Find entities | `serena recipe entities` |
+| Find controllers | `serena recipe controllers` |
+| Find listeners | `serena recipe listeners` |
+| Read memory | `serena memory read name` |
+| Write memory | `serena memory write name "content"` |
+| Regex search | `serena search "pattern" --glob "src/**/*.php"` |
 
 ## Quick Start
 
 ```bash
-# FIRST: Set up the path variable
-SERENA=~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena-fast
-SERENA_FULL=~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena
-
 # Check connection
-$SERENA status
+/home/sebastian/.local/bin/serena status
 
 # Find a class
-$SERENA find Customer --body
+/home/sebastian/.local/bin/serena find Customer --body
 
 # Find who calls a method
-$SERENA refs "Customer/getName" src/Entity/Customer.php
+/home/sebastian/.local/bin/serena refs "Customer/getName" src/Entity/Customer.php
 
 # Get file structure
-$SERENA overview src/Entity/Customer.php
+/home/sebastian/.local/bin/serena overview src/Entity/Customer.php
 
-# Common recipes (need full version)
-$SERENA_FULL recipe entities
-$SERENA_FULL recipe controllers
-$SERENA_FULL recipe listeners
+# Common recipes
+/home/sebastian/.local/bin/serena recipe entities
+/home/sebastian/.local/bin/serena recipe controllers
 ```
 
 ## Commands

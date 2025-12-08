@@ -81,7 +81,7 @@ description: |
   </commentary>
   </example>
 
-tools: Glob, Grep, Read, Bash, TodoWrite
+tools: Glob, Grep, Read, Bash(/home/sebastian/.local/bin/serena:*), Bash(ls:*), TodoWrite
 skills: serena:serena
 model: sonnet
 color: cyan
@@ -137,27 +137,25 @@ Serena supports 30+ languages: PHP, Python, JavaScript, TypeScript, Go, Rust, Ja
 
 ### Serena Commands
 
-```bash
-# FIRST: Set up path variables (MANDATORY)
-SERENA=~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena-fast
-SERENA_FULL=~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena
+**CLI Wrapper:** `/home/sebastian/.local/bin/serena`
 
+```bash
 # Find symbols (classes, functions, methods) - ALWAYS use --path!
-$SERENA find <pattern> --path src/ --body
+/home/sebastian/.local/bin/serena find <pattern> --path src/ --body
 
 # Find who calls a symbol (references)
-$SERENA refs "Class/method" path/to/file.php
+/home/sebastian/.local/bin/serena refs "Class/method" path/to/file.php
 
 # Get file structure overview
-$SERENA overview path/to/file.php
+/home/sebastian/.local/bin/serena overview path/to/file.php
 
 # Regex search across codebase
-$SERENA search "pattern" --glob "**/*.php"
+/home/sebastian/.local/bin/serena search "pattern" --glob "**/*.php"
 
-# Pre-built recipes (PHP/Symfony) - use FULL version
-$SERENA_FULL recipe entities
-$SERENA_FULL recipe controllers
-$SERENA_FULL recipe services
+# Pre-built recipes (PHP/Symfony)
+/home/sebastian/.local/bin/serena recipe entities
+/home/sebastian/.local/bin/serena recipe controllers
+/home/sebastian/.local/bin/serena recipe services
 ```
 
 ### When to Use Serena vs Grep

@@ -1,160 +1,261 @@
 ---
 name: jira-communication
 description: >
-  Jira API operations via Python CLI scripts. Use when:
-  - Searching or finding Jira issues/tickets (JQL queries)
-  - Getting, updating, or creating Jira tickets
-  - Checking ticket status or transitioning (e.g., "To Do" → "Done")
-  - Adding comments or logging work time (worklogs)
-  - Listing sprints, boards, or issue links
-  - Looking up Jira fields or user info
-  - Any request mentioning "Jira", "ticket", "issue", or ticket keys like "PROJ-123"
-  Supports Jira Cloud and Server/Data Center with automatic auth detection.
-allowed-tools: Bash(~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/jira-integration/skills/jira-communication/scripts/**/*.py:*)
+  MANDATORY when any ticket key appears (PROJ-123, HMKG-2064, etc.) - fetch it immediately.
+  Use for: (1) Any ticket/issue key mentioned anywhere - in conversation, files, git branches, errors,
+  (2) "look up", "get", "read", "check", "what's the status of" + ticket reference,
+  (3) Searching issues (JQL, "find tickets", "open bugs"),
+  (4) Creating, updating, or transitioning tickets,
+  (5) Adding comments or logging work time,
+  (6) Any mention of "Jira", "ticket", "issue".
+  Supports Jira Cloud and Server/Data Center.
 ---
 
 # Jira Communication
 
-Standalone CLI scripts for Jira operations (PEP 723 inline dependencies, directly executable).
+Unified `jira` CLI wrapper for all Jira operations.
+
+## The Iron Law
+
+```
+TICKET KEY MENTIONED = FETCH IT. NO EXCEPTIONS.
+```
+
+If a ticket key (PROJ-123, HMKG-2064) appears anywhere in conversation:
+- User's message
+- File contents you read
+- Git branch name
+- Error output
+
+**You MUST fetch it using `jira issue get`.**
+
+Not "might be useful to fetch" - MUST fetch. Not "if relevant" - ALWAYS.
+
+Fetching takes 2 seconds. Guessing wastes the user's time when you're wrong.
+
+## Trigger Patterns
+
+**Immediate fetch required:**
+- `PROJ-123`, `HMKG-2064` - any UPPERCASE-NUMBER pattern
+- "ticket", "issue", "Jira" + identifier
+- "look up", "check", "status of", "what's" + ticket reference
+- Branch names like `HMKG-2064-fix-something`
+
+**No judgment. No "is it relevant?". See pattern -> fetch.**
+
+## Common Rationalizations
+
+| Excuse | Reality |
+|--------|---------|
+| "Quick lookup, faster to describe" | Fetching takes 2 seconds. Your "quick description" is a guess. |
+| "I remember the ticket from earlier" | Memory is unreliable. Tickets change. Fetch the current state. |
+| "User didn't ask me to fetch it" | User mentioned it. That's implicit permission. Fetch it. |
+| "I'll just say I don't have access" | You DO have access. Use the `jira` command. |
+| "It would interrupt my flow" | Fetching is part of the flow. 2 seconds isn't interruption. |
+| "I can infer from context" | Inference != facts. Fetch the facts. |
+| "The ticket isn't relevant to the task" | If it was mentioned, it's relevant. Fetch it. |
+
+## Red Flags - STOP and Fetch
+
+If you catch yourself thinking:
+- "I don't need to look that up"
+- "I can answer from context"
+- "Let me just describe what I know"
+- "The user can check Jira themselves"
+- "I'll mention I don't have access to Jira"
+- "Fetching would slow things down"
+- "It's probably still in the same status"
+
+**STOP. You are rationalizing. Fetch the ticket.**
+
+If you've already responded without fetching: Acknowledge the mistake, fetch now.
+
+---
 
 ## Instructions
 
+- **Use the `jira` wrapper** - not the underlying Python scripts directly
 - **Default to `--json` flag** when processing data programmatically
-- **Don't read scripts** - use `<script>.py --help` to understand options
-- **Validate first**: Run `jira-validate.py` before other operations
+- **Use `--help`** on any command to see options: `jira issue --help`
+- **Validate first**: Run `jira validate` before other operations
 - **Dry-run writes**: Use `--dry-run` for create/update/transition operations
 - **Credentials**: Via `~/.env.jira` file or environment variables (see Authentication)
 - **Content formatting**: Use **jira-syntax** skill for descriptions/comments (Jira wiki markup, NOT Markdown)
 
-## Available Scripts
+## Permission Setup
+
+Add to your Claude Code settings for auto-approval:
+```
+Bash(/path/to/jira:*)
+```
+
+Example: `Bash(/home/user/.local/bin/jira:*)`
+
+## Available Commands
 
 ### Core Operations
 
-#### `scripts/core/jira-validate.py`
-**When to use:** Verify Jira connection and credentials
-
-#### `scripts/core/jira-issue.py`
+#### `jira issue`
 **When to use:** Get or update issue details
+```bash
+jira issue get PROJ-123
+jira issue --json get PROJ-123
+jira issue get PROJ-123 --full
+```
 
-#### `scripts/core/jira-search.py`
+#### `jira search`
 **When to use:** Search issues with JQL queries
+```bash
+jira search query "project = PROJ AND status = Open"
+jira search --json query "assignee = currentUser()"
+```
 
-#### `scripts/core/jira-worklog.py`
+#### `jira validate`
+**When to use:** Verify Jira connection and credentials
+```bash
+jira validate
+jira validate --verbose
+```
+
+#### `jira worklog`
 **When to use:** Add or list time tracking entries
+```bash
+jira worklog add PROJ-123 2h --comment "Implemented feature X"
+jira worklog list PROJ-123
+```
 
 ### Workflow Operations
 
-#### `scripts/workflow/jira-create.py`
+#### `jira create`
 **When to use:** Create new issues (use **jira-syntax** skill for description content)
+```bash
+jira create issue PROJ "Fix login bug" --type Bug
+jira create issue PROJ "New feature" --type Story --dry-run
+```
 
-#### `scripts/workflow/jira-transition.py`
+#### `jira transition`
 **When to use:** Change issue status with smart multi-step navigation
-
 ```bash
 # Simple transition
-$JIRA/workflow/jira-transition.py do PROJ-123 "In Progress"
+jira transition do PROJ-123 "In Progress"
 
 # Smart multi-step (finds path automatically)
-$JIRA/workflow/jira-transition.py do PROJ-123 "Waiting for QA"
+jira transition do PROJ-123 "Waiting for QA"
 
 # With comment trail
-$JIRA/workflow/jira-transition.py do PROJ-123 "Waiting for QA" --comment
+jira transition do PROJ-123 "Waiting for QA" --comment
 
 # Dry-run to see path
-$JIRA/workflow/jira-transition.py do PROJ-123 "Done" --dry-run
+jira transition do PROJ-123 "Done" --dry-run
 ```
 
-#### `scripts/workflow/jira-workflow.py`
+#### `jira workflow`
 **When to use:** Discover, view, and analyze Jira workflows
-
 ```bash
 # Discover workflow from issue
-$JIRA/workflow/jira-workflow.py discover PROJ-123
+jira workflow discover PROJ-123
 
 # Show workflow for issue type
-$JIRA/workflow/jira-workflow.py show "Sub: Task"
-$JIRA/workflow/jira-workflow.py show "Sub: Task" --format ascii
+jira workflow show "Sub: Task"
+jira workflow show "Sub: Task" --format ascii
 
 # List known workflows
-$JIRA/workflow/jira-workflow.py list
+jira workflow list
 
 # Show path between states
-$JIRA/workflow/jira-workflow.py path "Sub: Task" --from "Offen" --to "Waiting for QA"
+jira workflow path "Sub: Task" --from "Offen" --to "Waiting for QA"
 
 # Validate workflow for dead ends
-$JIRA/workflow/jira-workflow.py validate "Sub: Task"
+jira workflow validate "Sub: Task"
 ```
 
-#### `scripts/workflow/jira-comment.py`
+#### `jira comment`
 **When to use:** Add comments to issues (use **jira-syntax** skill for formatting)
+```bash
+jira comment add PROJ-123 "Work completed"
+```
 
-#### `scripts/workflow/jira-sprint.py`
+#### `jira sprint`
 **When to use:** List sprints or sprint issues
+```bash
+jira sprint list
+jira sprint issues 123
+```
 
-#### `scripts/workflow/jira-board.py`
+#### `jira board`
 **When to use:** List boards or board issues
+```bash
+jira board list
+jira board issues 456
+```
 
 ### Utility Operations
 
-#### `scripts/utility/jira-user.py`
+#### `jira user`
 **When to use:** Get user profile information
+```bash
+jira user me
+```
 
-#### `scripts/utility/jira-fields.py`
+#### `jira fields`
 **When to use:** Search available Jira fields
+```bash
+jira fields search "sprint"
+```
 
-#### `scripts/utility/jira-link.py`
+#### `jira link`
 **When to use:** Create or list issue links
+```bash
+jira link list PROJ-123
+jira link create PROJ-123 PROJ-456 "blocks"
+```
 
-## ⚠️ Flag Ordering (Critical)
+## Flag Ordering
 
-Global flags **MUST** come **before** the subcommand:
+Global flags go **after** the subcommand:
 
 ```bash
-# ✓ Correct
-$JIRA/core/jira-issue.py --json get PROJ-123
+# Correct
+jira issue --json get PROJ-123
 
-# ✗ Wrong - fails with "No such option"
-$JIRA/core/jira-issue.py get PROJ-123 --json
+# Wrong - wrapper won't recognize command
+jira --json issue get PROJ-123
 ```
 
 ## Quick Start
 
-All scripts support `--help`, `--json`, `--quiet`, and `--debug`.
-
-Scripts use PEP 723 inline metadata and are directly executable:
+All commands support `--help`, `--json`, `--quiet`, and `--debug`.
 
 ```bash
-JIRA=~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/jira-integration/skills/jira-communication/scripts
-
 # Validate setup first
-$JIRA/core/jira-validate.py --verbose
+jira validate --verbose
 
 # Search issues
-$JIRA/core/jira-search.py query "project = PROJ AND status = Open"
+jira search query "project = PROJ AND status = Open"
 
 # Get issue details
-$JIRA/core/jira-issue.py get PROJ-123
+jira issue get PROJ-123
 
 # Transition with dry-run
-$JIRA/workflow/jira-transition.py do PROJ-123 "In Progress" --dry-run
+jira transition do PROJ-123 "In Progress" --dry-run
 ```
 
 ## Common Workflows
 
 ### Find my open issues and get details
 ```bash
-$JIRA/core/jira-search.py --json query "assignee = currentUser() AND status != Done"
+jira search --json query "assignee = currentUser() AND status != Done"
 ```
 
 ### Log 2 hours of work
 ```bash
-$JIRA/core/jira-worklog.py add PROJ-123 2h --comment "Implemented feature X"
+jira worklog add PROJ-123 2h --comment "Implemented feature X"
 ```
 
 ### Create and transition an issue
 ```bash
-$JIRA/workflow/jira-create.py issue PROJ "Fix login bug" --type Bug
-$JIRA/workflow/jira-transition.py do PROJ-124 "In Progress"
+jira create issue PROJ "Fix login bug" --type Bug
+jira transition do PROJ-124 "In Progress"
 ```
 
 ## Related Skills
@@ -178,4 +279,4 @@ Configuration loaded in priority order:
 **Jira Cloud**: `JIRA_URL` + `JIRA_USERNAME` + `JIRA_API_TOKEN`
 **Jira Server/DC**: `JIRA_URL` + `JIRA_PERSONAL_TOKEN`
 
-Run `jira-validate.py --verbose` to verify setup. See [references/troubleshooting.md](references/troubleshooting.md) for detailed setup.
+Run `jira validate --verbose` to verify setup. See [references/troubleshooting.md](references/troubleshooting.md) for detailed setup.

@@ -3,7 +3,7 @@ name: serena-debug
 description: |
   Diagnose Serena issues: health checks, skill loading verification, command troubleshooting, agent behavior testing.
   Use when: Serena commands fail, agents use grep instead of Serena, need to verify setup works.
-tools: Bash, Read, Task
+tools: Bash(/home/sebastian/.local/bin/serena:*), Bash(ls:*), Read, Task
 skills: serena:serena-debug
 model: inherit
 color: yellow
@@ -15,17 +15,16 @@ You diagnose issues with Serena skills, agents, and commands.
 
 ## Available Diagnostics
 
-1. **Health Check** - Server, project, scripts, basic commands
+1. **Health Check** - Server, project, CLI wrapper, basic commands
 2. **Skill Loading** - Verify `skills:` field works, test auto-trigger
 3. **Command Troubleshooting** - Diagnose why commands fail
 4. **Agent Behavior** - Test if agents follow Serena skill under pressure
 
-## Setup (run first)
+## CLI Wrapper
 
-```bash
-SERENA=~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena-fast
-SERENA_FULL=~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena
-```
+**Use:** `/home/sebastian/.local/bin/serena`
+
+The wrapper routes commands automatically to serena-fast or full serena.
 
 ## How to Respond to Requests
 

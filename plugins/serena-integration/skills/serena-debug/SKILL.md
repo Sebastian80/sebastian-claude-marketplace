@@ -9,10 +9,9 @@ Diagnose and fix issues with Serena skills, agents, and commands.
 
 ## Setup
 
-```bash
-SERENA=~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena-fast
-SERENA_FULL=~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena
-```
+**Use the CLI wrapper:** `/home/sebastian/.local/bin/serena`
+
+All commands use the same wrapper - it routes automatically to serena-fast or full serena.
 
 ## 1. Health Checks
 
@@ -21,7 +20,7 @@ Run these checks first to verify Serena is working:
 ### 1.1 Server & Project Status
 
 ```bash
-$SERENA status
+/home/sebastian/.local/bin/serena status
 ```
 
 **Expected output contains:**
@@ -34,29 +33,28 @@ $SERENA status
 - Check port 9121 is accessible
 - Restart the server
 
-### 1.2 Scripts Executable
+### 1.2 CLI Wrapper Exists
 
 ```bash
-ls -la ~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/
+ls -la /home/sebastian/.local/bin/serena
 ```
 
 **Expected:**
-- `serena` and `serena-fast` have execute permission (`-rwx`)
+- `serena` wrapper has execute permission (`-rwx`)
 
 **If fails:**
 ```bash
-chmod +x ~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena
-chmod +x ~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/serena-fast
+chmod +x /home/sebastian/.local/bin/serena
 ```
 
 ### 1.3 Commands Work
 
 ```bash
-# Fast CLI
-$SERENA find Controller --kind class --path src/ 2>&1 | head -10
+# Find command (routes to fast)
+/home/sebastian/.local/bin/serena find Controller --kind class --path src/ 2>&1 | head -10
 
-# Full CLI
-$SERENA_FULL recipe entities 2>&1 | head -10
+# Recipe command (routes to full)
+/home/sebastian/.local/bin/serena recipe entities 2>&1 | head -10
 ```
 
 **Expected:** Returns results without errors
@@ -70,9 +68,9 @@ $SERENA_FULL recipe entities 2>&1 | head -10
 |-------|--------|---------|
 | Server running | ✅/❌ | Serena 0.1.4 / Error message |
 | Project activated | ✅/❌ | project-name / Not activated |
-| Scripts executable | ✅/❌ | Both OK / Missing permissions |
-| Fast CLI works | ✅/❌ | Returns results / Error |
-| Full CLI works | ✅/❌ | Returns results / Error |
+| CLI wrapper exists | ✅/❌ | OK / Missing |
+| Find command works | ✅/❌ | Returns results / Error |
+| Recipe command works | ✅/❌ | Returns results / Error |
 
 Overall: X/5 checks passed
 ```
@@ -92,7 +90,7 @@ Test if `skills: serena:serena` in agent YAML actually loads the skill content.
 | Question | Answer (only in skill) |
 |----------|------------------------|
 | "What's the 3-strike rule?" | Broaden pattern 3 times before grep fallback |
-| "What does $SERENA_FULL point to?" | `~/.../scripts/serena` (full Python client) |
+| "What does the CLI wrapper do?" | Routes commands to serena-fast or full serena |
 | "When is grep acceptable?" | Templates (.twig), XML, .env, comments |
 | "What's the performance difference with --path?" | 0.7s (src/) vs 28s+ (no path) |
 
@@ -158,11 +156,11 @@ Result: Skill loading [WORKS / HAS ISSUES]
 
 | Symptom | Likely Cause | Diagnostic Command |
 |---------|--------------|-------------------|
-| "No symbols found" | Pattern too specific | `$SERENA find <shorter> --path src/` |
+| "No symbols found" | Pattern too specific | `serena find <shorter> --path src/` |
 | "No symbols found" | Wrong path scope | Try `--path vendor/oro/` |
-| "No symbols found" | Not indexed yet | `$SERENA status` (check languages) |
+| "No symbols found" | Not indexed yet | `serena status` (check languages) |
 | "Connection refused" | Server down | Check port 9121, restart server |
-| "command not found" | $SERENA not set | `echo $SERENA` (should show path) |
+| "command not found" | Wrapper missing | Check `/home/sebastian/.local/bin/serena` exists |
 | Empty refs output | Wrong symbol path | Get exact path from `find` first |
 | Timeout / very slow | No --path restriction | Add `--path src/` or specific vendor |
 
@@ -170,22 +168,22 @@ Result: Skill loading [WORKS / HAS ISSUES]
 
 ```bash
 # 1. Capture the failing command
-FAILING_CMD="$SERENA find SomeClass --kind class --path src/"
+FAILING_CMD="/home/sebastian/.local/bin/serena find SomeClass --kind class --path src/"
 
 # 2. Run health check
-$SERENA status
+/home/sebastian/.local/bin/serena status
 
-# 3. Verify script exists and is executable
-ls -la $SERENA
+# 3. Verify wrapper exists and is executable
+ls -la /home/sebastian/.local/bin/serena
 
 # 4. Try broader pattern
-$SERENA find Some --kind class --path src/
+/home/sebastian/.local/bin/serena find Some --kind class --path src/
 
 # 5. Try different path scope
-$SERENA find SomeClass --kind class --path vendor/
+/home/sebastian/.local/bin/serena find SomeClass --kind class --path vendor/
 
 # 6. Try without --kind filter
-$SERENA find SomeClass --path src/
+/home/sebastian/.local/bin/serena find SomeClass --path src/
 
 # 7. Check if it's in a non-indexed language
 # (Serena only indexes languages in .serena/project.yml)
@@ -196,7 +194,7 @@ $SERENA find SomeClass --path src/
 ```
 ## Command Troubleshooting
 
-**Failing command:** $SERENA find PaymentInterface --kind interface --path src/
+**Failing command:** serena find PaymentInterface --kind interface --path src/
 **Error:** No symbols found
 
 ### Diagnosis
@@ -211,7 +209,7 @@ $SERENA find SomeClass --path src/
 The interface is defined in vendor/oro/, not src/.
 
 **Working command:**
-$SERENA find Payment --kind interface --path vendor/oro/
+/home/sebastian/.local/bin/serena find Payment --kind interface --path vendor/oro/
 ```
 
 ---
@@ -312,18 +310,17 @@ Project: [project-name]
 
 ```bash
 # Full health check
-$SERENA status && $SERENA find Controller --kind class --path src/ | head -5
+/home/sebastian/.local/bin/serena status && /home/sebastian/.local/bin/serena find Controller --kind class --path src/ | head -5
 
-# Test fast CLI
-$SERENA find Test --kind class --path src/
+# Test find command
+/home/sebastian/.local/bin/serena find Test --kind class --path src/
 
-# Test full CLI
-$SERENA_FULL recipe entities | head -10
+# Test recipe command
+/home/sebastian/.local/bin/serena recipe entities | head -10
 
-# Check script permissions
-ls -la ~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/serena/skills/serena/scripts/
+# Check wrapper exists
+ls -la /home/sebastian/.local/bin/serena
 
-# Verify $SERENA variable
-echo "SERENA=$SERENA"
-echo "SERENA_FULL=$SERENA_FULL"
+# Test wrapper help
+/home/sebastian/.local/bin/serena help
 ```
