@@ -422,15 +422,27 @@ cmd_listdir() {
   local RESULT
   RESULT=$(call_tool "list_dir" "{\"relative_path\":\"$PATH_ARG\",\"recursive\":$RECURSIVE}")
 
-  # Check if result is an error message
+  # Check if result is an error message or has error field
   if [[ "$RESULT" == Error* ]] || [[ "$RESULT" == "null" ]]; then
     echo "Error: Cannot list '$PATH_ARG'" >&2
     return 1
   fi
 
+  # Check for error in JSON response
+  local ERR=$(echo "$RESULT" | jq -r '.error // empty' 2>/dev/null)
+  if [[ -n "$ERR" ]]; then
+    echo "Error: $ERR" >&2
+    local HINT=$(echo "$RESULT" | jq -r '.hint // empty' 2>/dev/null)
+    [[ -n "$HINT" ]] && echo "Hint: $HINT" >&2
+    return 1
+  fi
+
   echo "$RESULT" | jq -r '
-    if type == "object" and .directories then
-      (.directories // [] | .[] | "\(.)/"),
+    if type == "object" and .dirs then
+      (.dirs // [] | .[]),
+      (.files // [] | .[])
+    elif type == "object" and .directories then
+      (.directories // [] | .[]),
       (.files // [] | .[])
     elif type == "array" then
       .[]
