@@ -10,11 +10,12 @@ description: >
   - Looking up Jira fields or user info
   - Any request mentioning "Jira", "ticket", "issue", or ticket keys like "PROJ-123"
   Supports Jira Cloud and Server/Data Center with automatic auth detection.
+allowed-tools: Bash(~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/jira-integration/skills/jira-communication/scripts/**/*.py:*)
 ---
 
 # Jira Communication
 
-Standalone CLI scripts for Jira operations using `uv run`.
+Standalone CLI scripts for Jira operations (PEP 723 inline dependencies, directly executable).
 
 ## Instructions
 
@@ -75,46 +76,50 @@ Global flags **MUST** come **before** the subcommand:
 
 ```bash
 # ✓ Correct
-uv run scripts/core/jira-issue.py --json get PROJ-123
+$JIRA/core/jira-issue.py --json get PROJ-123
 
 # ✗ Wrong - fails with "No such option"
-uv run scripts/core/jira-issue.py get PROJ-123 --json
+$JIRA/core/jira-issue.py get PROJ-123 --json
 ```
 
 ## Quick Start
 
 All scripts support `--help`, `--json`, `--quiet`, and `--debug`.
 
+Scripts use PEP 723 inline metadata and are directly executable:
+
 ```bash
+JIRA=~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/jira-integration/skills/jira-communication/scripts
+
 # Validate setup first
-uv run scripts/core/jira-validate.py --verbose
+$JIRA/core/jira-validate.py --verbose
 
 # Search issues
-uv run scripts/core/jira-search.py query "project = PROJ AND status = Open"
+$JIRA/core/jira-search.py query "project = PROJ AND status = Open"
 
 # Get issue details
-uv run scripts/core/jira-issue.py get PROJ-123
+$JIRA/core/jira-issue.py get PROJ-123
 
 # Transition with dry-run
-uv run scripts/workflow/jira-transition.py do PROJ-123 "In Progress" --dry-run
+$JIRA/workflow/jira-transition.py do PROJ-123 "In Progress" --dry-run
 ```
 
 ## Common Workflows
 
 ### Find my open issues and get details
 ```bash
-uv run scripts/core/jira-search.py --json query "assignee = currentUser() AND status != Done"
+$JIRA/core/jira-search.py --json query "assignee = currentUser() AND status != Done"
 ```
 
 ### Log 2 hours of work
 ```bash
-uv run scripts/core/jira-worklog.py add PROJ-123 2h --comment "Implemented feature X"
+$JIRA/core/jira-worklog.py add PROJ-123 2h --comment "Implemented feature X"
 ```
 
 ### Create and transition an issue
 ```bash
-uv run scripts/workflow/jira-create.py issue PROJ "Fix login bug" --type Bug
-uv run scripts/workflow/jira-transition.py do PROJ-124 "In Progress"
+$JIRA/workflow/jira-create.py issue PROJ "Fix login bug" --type Bug
+$JIRA/workflow/jira-transition.py do PROJ-124 "In Progress"
 ```
 
 ## Related Skills

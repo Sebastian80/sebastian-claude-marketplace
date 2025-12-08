@@ -5,15 +5,5 @@
   "author": {
     "name": "Sebastian"
   },
-  "license": "MIT",
-  "skills": [
-    {
-      "name": "confluence-syntax",
-      "path": "skills/confluence-syntax"
-    },
-    {
-      "name": "confluence-communication",
-      "path": "skills/confluence-communication"
-    }
-  ]
+  "license": "MIT"
 }

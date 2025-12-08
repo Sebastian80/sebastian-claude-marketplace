@@ -6,15 +6,5 @@
     "name": "Netresearch DTT GmbH",
     "email": "info@netresearch.de"
   },
-  "license": "MIT",
-  "skills": [
-    {
-      "name": "jira-syntax",
-      "path": "skills/jira-syntax"
-    },
-    {
-      "name": "jira-communication",
-      "path": "skills/jira-communication"
-    }
-  ]
+  "license": "MIT"
 }
