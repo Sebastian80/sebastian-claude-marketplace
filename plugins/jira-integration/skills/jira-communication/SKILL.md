@@ -48,7 +48,42 @@ Standalone CLI scripts for Jira operations (PEP 723 inline dependencies, directl
 **When to use:** Create new issues (use **jira-syntax** skill for description content)
 
 #### `scripts/workflow/jira-transition.py`
-**When to use:** Change issue status (e.g., "In Progress" → "Done")
+**When to use:** Change issue status with smart multi-step navigation
+
+```bash
+# Simple transition
+$JIRA/workflow/jira-transition.py do PROJ-123 "In Progress"
+
+# Smart multi-step (finds path automatically)
+$JIRA/workflow/jira-transition.py do PROJ-123 "Waiting for QA"
+
+# With comment trail
+$JIRA/workflow/jira-transition.py do PROJ-123 "Waiting for QA" --comment
+
+# Dry-run to see path
+$JIRA/workflow/jira-transition.py do PROJ-123 "Done" --dry-run
+```
+
+#### `scripts/workflow/jira-workflow.py`
+**When to use:** Discover, view, and analyze Jira workflows
+
+```bash
+# Discover workflow from issue
+$JIRA/workflow/jira-workflow.py discover PROJ-123
+
+# Show workflow for issue type
+$JIRA/workflow/jira-workflow.py show "Sub: Task"
+$JIRA/workflow/jira-workflow.py show "Sub: Task" --format ascii
+
+# List known workflows
+$JIRA/workflow/jira-workflow.py list
+
+# Show path between states
+$JIRA/workflow/jira-workflow.py path "Sub: Task" --from "Offen" --to "Waiting for QA"
+
+# Validate workflow for dead ends
+$JIRA/workflow/jira-workflow.py validate "Sub: Task"
+```
 
 #### `scripts/workflow/jira-comment.py`
 **When to use:** Add comments to issues (use **jira-syntax** skill for formatting)
