@@ -128,6 +128,34 @@ class WorkflowGraph:
 
         return visited
 
+    def to_ascii(self) -> str:
+        """Visual ASCII diagram of workflow."""
+        lines = [f"Workflow: {self.issue_type}", "=" * 50]
+
+        for state in sorted(self.states.keys()):
+            transitions = self.states[state]
+            lines.append(f"\n[{state}]")
+            for t in transitions:
+                lines.append(f"  --({t.name})--> {t.to}")
+
+        return "\n".join(lines)
+
+    def to_table(self) -> str:
+        """Tabular representation."""
+        lines = []
+        header = f"{'State':<25} {'Transition':<25} {'To State':<25}"
+        lines.append(header)
+        lines.append("-" * 75)
+
+        for state in sorted(self.states.keys()):
+            first = True
+            for t in self.states[state]:
+                state_col = state if first else ""
+                lines.append(f"{state_col:<25} {t.name:<25} {t.to:<25}")
+                first = False
+
+        return "\n".join(lines)
+
     def to_dict(self) -> dict:
         """JSON-serializable dictionary."""
         return {
