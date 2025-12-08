@@ -395,3 +395,99 @@ def discover_workflow(client, issue_key: str, verbose: bool = False) -> Workflow
         print(f"✓ Discovered {len(graph.states)} states")
 
     return graph
+
+
+def smart_transition(
+    client,
+    issue_key: str,
+    target_state: str,
+    store: WorkflowStore,
+    add_comment: bool = False,
+    dry_run: bool = False,
+    verbose: bool = False
+) -> list[Transition]:
+    """
+    Transition issue to target state, navigating multiple steps if needed.
+
+    Args:
+        client: Jira client instance
+        issue_key: Issue to transition
+        target_state: Target state name (case-insensitive, partial match)
+        store: WorkflowStore instance
+        add_comment: Add comment trail after transition
+        dry_run: Show path without executing
+        verbose: Print progress
+
+    Returns:
+        List of Transitions that were executed
+
+    Raises:
+        WorkflowNotFoundError: Issue type unknown (triggers auto-discover)
+        PathNotFoundError: No route to target state
+        TransitionFailedError: Execution failed mid-path
+    """
+    # Get issue info
+    issue = client.issue(issue_key, fields="status,issuetype")
+    issue_type = issue["fields"]["issuetype"]["name"]
+    current_state = issue["fields"]["status"]["name"]
+
+    if verbose:
+        print(f"Transitioning {issue_key} ({issue_type})")
+        print(f"  Current: {current_state}")
+        print(f"  Target: {target_state}")
+
+    # Load workflow
+    graph = store.get(issue_type)
+
+    if graph is None:
+        if verbose:
+            print(f"  Workflow unknown, discovering...")
+        graph = discover_workflow(client, issue_key, verbose=verbose)
+        store.save(graph)
+
+    # Find path
+    path = graph.path_to(current_state, target_state)
+
+    if not path:
+        if verbose:
+            print(f"  Already at target state")
+        return []
+
+    if verbose or dry_run:
+        path_str = " → ".join([current_state] + [t.to for t in path])
+        print(f"  Path: {path_str} ({len(path)} steps)")
+
+    if dry_run:
+        return path
+
+    # Execute transitions
+    executed = []
+    for i, transition in enumerate(path, 1):
+        if verbose:
+            print(f"  Step {i}/{len(path)}: {transition.name} → {transition.to}", end=" ")
+
+        try:
+            client.set_issue_status(issue_key, transition.to)
+            executed.append(transition)
+            if verbose:
+                print("✓")
+        except Exception as e:
+            if verbose:
+                print("✗")
+            raise TransitionFailedError(
+                issue_key=issue_key,
+                transition=transition,
+                current_state=executed[-1].to if executed else current_state,
+                reason=str(e)
+            )
+
+    # Add comment trail if requested
+    if add_comment and executed:
+        trail = " → ".join([current_state] + [t.to for t in executed])
+        comment = f"Transitioned: {trail}"
+        try:
+            client.issue_add_comment(issue_key, comment)
+        except Exception:
+            pass  # Don't fail if comment fails
+
+    return executed
