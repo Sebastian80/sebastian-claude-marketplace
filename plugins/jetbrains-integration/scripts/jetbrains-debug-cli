@@ -1,0 +1,400 @@
+#!/usr/bin/env python3
+"""
+JetBrains Debug CLI - Command-line interface for PhpStorm debugger via MCP
+
+Usage:
+    jetbrains-debug <command> [options]
+
+Commands:
+    tools               List available debugger tools
+
+    Breakpoints:
+    bp set <file> <line>    Set breakpoint at file:line
+    bp list                 List all breakpoints
+    bp remove <id>          Remove breakpoint by ID
+    bp clear                Remove all breakpoints
+
+    Session:
+    configs                 List debug configurations
+    start <config>          Start debug session
+    stop                    Stop debug session
+    sessions                List active debug sessions
+    status                  Get current debug status
+
+    Execution:
+    step over               Step over (next line)
+    step into               Step into function
+    step out                Step out of function
+    continue                Continue to next breakpoint
+    pause                   Pause execution
+    run-to <file> <line>    Run to specific line
+
+    Inspection:
+    vars                    Get all variables
+    eval <expr>             Evaluate expression
+    set <var> <value>       Set variable value
+    stack                   Get stack trace
+    frame <index>           Select stack frame
+    threads                 List all threads
+    source                  Get source context
+"""
+import sys
+import os
+import json
+
+# Add scripts dir to path
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, SCRIPT_DIR)
+
+from jetbrains_debugger_mcp import get_client, format_tool_result
+
+
+def cmd_tools(args):
+    """List available debugger tools"""
+    client = get_client()
+    tools = client.list_tools()
+    print(f"Available debugger tools ({len(tools)}):\n")
+    for t in tools:
+        desc = t.get("description", "").split("\n")[0][:60]
+        print(f"  {t['name']:<30} {desc}")
+
+
+# === Breakpoint Commands ===
+
+def cmd_bp(args):
+    """Breakpoint management"""
+    if not args:
+        print("Usage: jetbrains-debug bp <set|list|remove|clear> [args]", file=sys.stderr)
+        sys.exit(1)
+
+    subcmd = args[0]
+    subargs = args[1:]
+
+    if subcmd == "set":
+        cmd_bp_set(subargs)
+    elif subcmd == "list":
+        cmd_bp_list(subargs)
+    elif subcmd == "remove":
+        cmd_bp_remove(subargs)
+    elif subcmd == "clear":
+        cmd_bp_clear(subargs)
+    else:
+        print(f"Unknown bp subcommand: {subcmd}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_bp_set(args):
+    """Set a breakpoint"""
+    if len(args) < 2:
+        print("Usage: jetbrains-debug bp set <file> <line> [--condition EXPR] [--log MSG] [--temp]", file=sys.stderr)
+        sys.exit(1)
+
+    file_path = args[0]
+    line = int(args[1])
+
+    params = {"file_path": file_path, "line": line}
+
+    if "--condition" in args:
+        idx = args.index("--condition")
+        params["condition"] = args[idx + 1]
+    if "--log" in args:
+        idx = args.index("--log")
+        params["log_message"] = args[idx + 1]
+        params["suspend_policy"] = "none"
+    if "--temp" in args:
+        params["temporary"] = True
+
+    client = get_client()
+    result = client.call_tool("set_breakpoint", params)
+    print(format_tool_result(result))
+
+
+def cmd_bp_list(args):
+    """List all breakpoints"""
+    client = get_client()
+    result = client.call_tool("list_breakpoints", {})
+    print(format_tool_result(result))
+
+
+def cmd_bp_remove(args):
+    """Remove a breakpoint"""
+    if not args:
+        print("Usage: jetbrains-debug bp remove <breakpoint-id>", file=sys.stderr)
+        sys.exit(1)
+
+    client = get_client()
+    result = client.call_tool("remove_breakpoint", {"breakpoint_id": args[0]})
+    print(format_tool_result(result))
+
+
+def cmd_bp_clear(args):
+    """Remove all breakpoints"""
+    client = get_client()
+    # First list, then remove each
+    result = client.call_tool("list_breakpoints", {})
+    breakpoints = result.get("structuredContent", {}).get("breakpoints", [])
+
+    if not breakpoints:
+        print("No breakpoints to clear")
+        return
+
+    for bp in breakpoints:
+        bp_id = bp.get("id")
+        if bp_id:
+            client.call_tool("remove_breakpoint", {"breakpoint_id": bp_id})
+            print(f"Removed: {bp_id}")
+
+    print(f"Cleared {len(breakpoints)} breakpoints")
+
+
+# === Session Commands ===
+
+def cmd_configs(args):
+    """List debug configurations"""
+    client = get_client()
+    result = client.call_tool("list_run_configurations", {})
+    print(format_tool_result(result))
+
+
+def cmd_start(args):
+    """Start debug session"""
+    if not args:
+        print("Usage: jetbrains-debug start <configuration-name>", file=sys.stderr)
+        sys.exit(1)
+
+    client = get_client()
+    result = client.call_tool("start_debug_session", {"configuration_name": args[0]})
+    print(format_tool_result(result))
+
+
+def cmd_stop(args):
+    """Stop debug session"""
+    client = get_client()
+    params = {}
+    if args:
+        params["session_id"] = args[0]
+    result = client.call_tool("stop_debug_session", params)
+    print(format_tool_result(result))
+
+
+def cmd_sessions(args):
+    """List active debug sessions"""
+    client = get_client()
+    result = client.call_tool("list_debug_sessions", {})
+    print(format_tool_result(result))
+
+
+def cmd_status(args):
+    """Get current debug status"""
+    client = get_client()
+    params = {
+        "include_variables": True,
+        "include_source_context": True
+    }
+    if "--no-vars" in args:
+        params["include_variables"] = False
+    if "--no-source" in args:
+        params["include_source_context"] = False
+
+    result = client.call_tool("get_debug_session_status", params)
+    print(format_tool_result(result))
+
+
+# === Execution Commands ===
+
+def cmd_step(args):
+    """Step execution"""
+    if not args:
+        print("Usage: jetbrains-debug step <over|into|out>", file=sys.stderr)
+        sys.exit(1)
+
+    client = get_client()
+    subcmd = args[0]
+
+    if subcmd == "over":
+        result = client.call_tool("step_over", {})
+    elif subcmd == "into":
+        result = client.call_tool("step_into", {})
+    elif subcmd == "out":
+        result = client.call_tool("step_out", {})
+    else:
+        print(f"Unknown step type: {subcmd}. Use over, into, or out.", file=sys.stderr)
+        sys.exit(1)
+
+    print(format_tool_result(result))
+
+
+def cmd_continue(args):
+    """Continue execution"""
+    client = get_client()
+    result = client.call_tool("resume_execution", {})
+    print(format_tool_result(result))
+
+
+def cmd_pause(args):
+    """Pause execution"""
+    client = get_client()
+    result = client.call_tool("pause_execution", {})
+    print(format_tool_result(result))
+
+
+def cmd_run_to(args):
+    """Run to specific line"""
+    if len(args) < 2:
+        print("Usage: jetbrains-debug run-to <file> <line>", file=sys.stderr)
+        sys.exit(1)
+
+    client = get_client()
+    result = client.call_tool("run_to_line", {
+        "file_path": args[0],
+        "line": int(args[1])
+    })
+    print(format_tool_result(result))
+
+
+# === Inspection Commands ===
+
+def cmd_vars(args):
+    """Get all variables"""
+    client = get_client()
+    params = {}
+    if args:
+        params["frame_index"] = int(args[0])
+
+    result = client.call_tool("get_variables", params)
+    print(format_tool_result(result))
+
+
+def cmd_eval(args):
+    """Evaluate expression"""
+    if not args:
+        print("Usage: jetbrains-debug eval <expression>", file=sys.stderr)
+        sys.exit(1)
+
+    client = get_client()
+    # Join all args as the expression (allows spaces)
+    expr = " ".join(args)
+    result = client.call_tool("evaluate_expression", {"expression": expr})
+    print(format_tool_result(result))
+
+
+def cmd_set(args):
+    """Set variable value"""
+    if len(args) < 2:
+        print("Usage: jetbrains-debug set <variable> <value>", file=sys.stderr)
+        sys.exit(1)
+
+    client = get_client()
+    result = client.call_tool("set_variable", {
+        "variable_name": args[0],
+        "new_value": args[1]
+    })
+    print(format_tool_result(result))
+
+
+def cmd_stack(args):
+    """Get stack trace"""
+    client = get_client()
+    params = {}
+    if "--max" in args:
+        idx = args.index("--max")
+        params["max_frames"] = int(args[idx + 1])
+
+    result = client.call_tool("get_stack_trace", params)
+    print(format_tool_result(result))
+
+
+def cmd_frame(args):
+    """Select stack frame"""
+    if not args:
+        print("Usage: jetbrains-debug frame <index>", file=sys.stderr)
+        sys.exit(1)
+
+    client = get_client()
+    result = client.call_tool("select_stack_frame", {"frame_index": int(args[0])})
+    print(format_tool_result(result))
+
+
+def cmd_threads(args):
+    """List all threads"""
+    client = get_client()
+    result = client.call_tool("list_threads", {})
+    print(format_tool_result(result))
+
+
+def cmd_source(args):
+    """Get source context"""
+    client = get_client()
+    params = {}
+
+    if args and not args[0].startswith("--"):
+        params["file_path"] = args[0]
+        if len(args) > 1 and not args[1].startswith("--"):
+            params["line"] = int(args[1])
+
+    if "--before" in args:
+        idx = args.index("--before")
+        params["lines_before"] = int(args[idx + 1])
+    if "--after" in args:
+        idx = args.index("--after")
+        params["lines_after"] = int(args[idx + 1])
+
+    result = client.call_tool("get_source_context", params)
+    print(format_tool_result(result))
+
+
+def cmd_help(args):
+    """Show help"""
+    print(__doc__)
+
+
+COMMANDS = {
+    "tools": cmd_tools,
+    "bp": cmd_bp,
+    "configs": cmd_configs,
+    "start": cmd_start,
+    "stop": cmd_stop,
+    "sessions": cmd_sessions,
+    "status": cmd_status,
+    "step": cmd_step,
+    "continue": cmd_continue,
+    "pause": cmd_pause,
+    "run-to": cmd_run_to,
+    "vars": cmd_vars,
+    "eval": cmd_eval,
+    "set": cmd_set,
+    "stack": cmd_stack,
+    "frame": cmd_frame,
+    "threads": cmd_threads,
+    "source": cmd_source,
+    "help": cmd_help,
+    "-h": cmd_help,
+    "--help": cmd_help,
+}
+
+
+def main():
+    if len(sys.argv) < 2:
+        cmd_help([])
+        sys.exit(0)
+
+    cmd = sys.argv[1]
+    args = sys.argv[2:]
+
+    if cmd not in COMMANDS:
+        print(f"Unknown command: {cmd}", file=sys.stderr)
+        print("Use 'jetbrains-debug help' for usage", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        COMMANDS[cmd](args)
+    except ConnectionError as e:
+        print(f"Connection error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

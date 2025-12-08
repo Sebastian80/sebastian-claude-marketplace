@@ -1,0 +1,393 @@
+#!/usr/bin/env python3
+"""
+JetBrains CLI - Command-line interface for JetBrains IDE tools via MCP
+
+Usage:
+    jetbrains <command> [options]
+
+Commands:
+    tools           List available tools
+    files           Find files by name keyword
+    glob            Find files by glob pattern
+    search          Search in files by text
+    regex           Search in files by regex
+    tree            Show directory tree
+    read            Read file contents
+    create          Create a new file
+    problems        Get file problems/errors
+    configs         List run configurations
+    run             Execute a run configuration
+    open            Open file in editor
+    open-files      List all open files in IDE
+    reformat        Reformat a file
+    symbol          Get symbol info at position
+    replace         Replace text in file
+    rename          Rename symbol (refactoring)
+    terminal        Execute terminal command in IDE
+    deps            List project dependencies
+    modules         List project modules
+    repos           List VCS repositories
+"""
+import sys
+import os
+import json
+
+# Add scripts dir to path
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, SCRIPT_DIR)
+
+from jetbrains_mcp import get_client, format_tool_result
+
+
+def cmd_tools(args):
+    """List available tools"""
+    client = get_client()
+    tools = client.list_tools()
+    print(f"Available tools ({len(tools)}):\n")
+    for t in tools:
+        desc = t.get("description", "").split("\n")[0][:60]
+        print(f"  {t['name']:<35} {desc}")
+
+
+def cmd_files(args):
+    """Find files by name keyword"""
+    if not args:
+        print("Usage: jetbrains files <keyword> [--limit N]", file=sys.stderr)
+        sys.exit(1)
+
+    keyword = args[0]
+    limit = 20
+    if "--limit" in args:
+        idx = args.index("--limit")
+        limit = int(args[idx + 1])
+
+    client = get_client()
+    result = client.call_tool("find_files_by_name_keyword", {
+        "nameKeyword": keyword,
+        "fileCountLimit": limit
+    })
+    print(format_tool_result(result))
+
+
+def cmd_glob(args):
+    """Find files by glob pattern"""
+    if not args:
+        print("Usage: jetbrains glob <pattern> [subdir]", file=sys.stderr)
+        sys.exit(1)
+
+    pattern = args[0]
+    params = {"globPattern": pattern, "fileCountLimit": 50}
+    if len(args) > 1:
+        params["subDirectoryRelativePath"] = args[1]
+
+    client = get_client()
+    result = client.call_tool("find_files_by_glob", params)
+    print(format_tool_result(result))
+
+
+def cmd_search(args):
+    """Search in files by text"""
+    if not args:
+        print("Usage: jetbrains search <text> [--dir DIR] [--mask MASK]", file=sys.stderr)
+        sys.exit(1)
+
+    text = args[0]
+    params = {"searchText": text, "maxUsageCount": 50}
+
+    if "--dir" in args:
+        idx = args.index("--dir")
+        params["directoryToSearch"] = args[idx + 1]
+    if "--mask" in args:
+        idx = args.index("--mask")
+        params["fileMask"] = args[idx + 1]
+
+    client = get_client()
+    result = client.call_tool("search_in_files_by_text", params)
+    print(format_tool_result(result))
+
+
+def cmd_regex(args):
+    """Search in files by regex pattern"""
+    if not args:
+        print("Usage: jetbrains regex <pattern> [--dir DIR] [--mask MASK]", file=sys.stderr)
+        sys.exit(1)
+
+    pattern = args[0]
+    params = {"regexPattern": pattern, "maxUsageCount": 50}
+
+    if "--dir" in args:
+        idx = args.index("--dir")
+        params["directoryToSearch"] = args[idx + 1]
+    if "--mask" in args:
+        idx = args.index("--mask")
+        params["fileMask"] = args[idx + 1]
+    if "--case-sensitive" in args:
+        params["caseSensitive"] = True
+
+    client = get_client()
+    result = client.call_tool("search_in_files_by_regex", params)
+    print(format_tool_result(result))
+
+
+def cmd_tree(args):
+    """Show directory tree"""
+    dir_path = args[0] if args else "."
+    depth = 3
+    if "--depth" in args:
+        idx = args.index("--depth")
+        depth = int(args[idx + 1])
+
+    client = get_client()
+    result = client.call_tool("list_directory_tree", {
+        "directoryPath": dir_path,
+        "maxDepth": depth
+    })
+    print(format_tool_result(result))
+
+
+def cmd_read(args):
+    """Read file contents"""
+    if not args:
+        print("Usage: jetbrains read <file-path> [--lines N]", file=sys.stderr)
+        sys.exit(1)
+
+    params = {"pathInProject": args[0]}
+    if "--lines" in args:
+        idx = args.index("--lines")
+        params["maxLinesCount"] = int(args[idx + 1])
+
+    client = get_client()
+    result = client.call_tool("get_file_text_by_path", params)
+    print(format_tool_result(result))
+
+
+def cmd_create(args):
+    """Create a new file"""
+    if not args:
+        print("Usage: jetbrains create <file-path> [--content TEXT] [--overwrite]", file=sys.stderr)
+        sys.exit(1)
+
+    params = {"pathInProject": args[0]}
+    if "--content" in args:
+        idx = args.index("--content")
+        params["text"] = args[idx + 1]
+    if "--overwrite" in args:
+        params["overwrite"] = True
+
+    client = get_client()
+    result = client.call_tool("create_new_file", params)
+    print(format_tool_result(result))
+
+
+def cmd_open_files(args):
+    """List all open files in IDE"""
+    client = get_client()
+    result = client.call_tool("get_all_open_file_paths", {})
+    print(format_tool_result(result))
+
+
+def cmd_problems(args):
+    """Get file problems/errors"""
+    if not args:
+        print("Usage: jetbrains problems <file-path> [--errors-only]", file=sys.stderr)
+        sys.exit(1)
+
+    client = get_client()
+    result = client.call_tool("get_file_problems", {
+        "filePath": args[0],
+        "errorsOnly": "--errors-only" in args
+    })
+    print(format_tool_result(result))
+
+
+def cmd_configs(args):
+    """List run configurations"""
+    client = get_client()
+    result = client.call_tool("get_run_configurations", {})
+    print(format_tool_result(result))
+
+
+def cmd_run(args):
+    """Execute a run configuration"""
+    if not args:
+        print("Usage: jetbrains run <config-name> [--timeout MS]", file=sys.stderr)
+        sys.exit(1)
+
+    timeout = 60000
+    if "--timeout" in args:
+        idx = args.index("--timeout")
+        timeout = int(args[idx + 1])
+
+    client = get_client()
+    result = client.call_tool("execute_run_configuration", {
+        "configurationName": args[0],
+        "timeout": timeout
+    })
+    print(format_tool_result(result))
+
+
+def cmd_open(args):
+    """Open file in editor"""
+    if not args:
+        print("Usage: jetbrains open <file-path>", file=sys.stderr)
+        sys.exit(1)
+
+    client = get_client()
+    result = client.call_tool("open_file_in_editor", {"filePath": args[0]})
+    print(format_tool_result(result))
+
+
+def cmd_reformat(args):
+    """Reformat a file"""
+    if not args:
+        print("Usage: jetbrains reformat <file-path>", file=sys.stderr)
+        sys.exit(1)
+
+    client = get_client()
+    result = client.call_tool("reformat_file", {"path": args[0]})
+    print(format_tool_result(result))
+
+
+def cmd_symbol(args):
+    """Get symbol info at position"""
+    if len(args) < 3:
+        print("Usage: jetbrains symbol <file> <line> <column>", file=sys.stderr)
+        sys.exit(1)
+
+    client = get_client()
+    result = client.call_tool("get_symbol_info", {
+        "filePath": args[0],
+        "line": int(args[1]),
+        "column": int(args[2])
+    })
+    print(format_tool_result(result))
+
+
+def cmd_replace(args):
+    """Replace text in file"""
+    if len(args) < 3:
+        print("Usage: jetbrains replace <file> <old-text> <new-text> [--all]", file=sys.stderr)
+        sys.exit(1)
+
+    client = get_client()
+    result = client.call_tool("replace_text_in_file", {
+        "pathInProject": args[0],
+        "oldText": args[1],
+        "newText": args[2],
+        "replaceAll": "--all" in args
+    })
+    print(format_tool_result(result))
+
+
+def cmd_deps(args):
+    """List project dependencies"""
+    client = get_client()
+    result = client.call_tool("get_project_dependencies", {})
+    print(format_tool_result(result))
+
+
+def cmd_modules(args):
+    """List project modules"""
+    client = get_client()
+    result = client.call_tool("get_project_modules", {})
+    print(format_tool_result(result))
+
+
+def cmd_rename(args):
+    """Rename symbol (refactoring)"""
+    if len(args) < 3:
+        print("Usage: jetbrains rename <file-path> <symbol-name> <new-name>", file=sys.stderr)
+        sys.exit(1)
+
+    client = get_client()
+    result = client.call_tool("rename_refactoring", {
+        "pathInProject": args[0],
+        "symbolName": args[1],
+        "newName": args[2]
+    })
+    print(format_tool_result(result))
+
+
+def cmd_terminal(args):
+    """Execute terminal command in IDE"""
+    if not args:
+        print("Usage: jetbrains terminal <command> [--timeout MS] [--shell]", file=sys.stderr)
+        sys.exit(1)
+
+    params = {"command": args[0]}
+    if "--timeout" in args:
+        idx = args.index("--timeout")
+        params["timeout"] = int(args[idx + 1])
+    if "--shell" in args:
+        params["executeInShell"] = True
+
+    client = get_client()
+    result = client.call_tool("execute_terminal_command", params)
+    print(format_tool_result(result))
+
+
+def cmd_repos(args):
+    """List VCS repositories"""
+    client = get_client()
+    result = client.call_tool("get_repositories", {})
+    print(format_tool_result(result))
+
+
+def cmd_help(args):
+    """Show help"""
+    print(__doc__)
+
+
+COMMANDS = {
+    "tools": cmd_tools,
+    "files": cmd_files,
+    "glob": cmd_glob,
+    "search": cmd_search,
+    "regex": cmd_regex,
+    "tree": cmd_tree,
+    "read": cmd_read,
+    "create": cmd_create,
+    "problems": cmd_problems,
+    "configs": cmd_configs,
+    "run": cmd_run,
+    "open": cmd_open,
+    "open-files": cmd_open_files,
+    "reformat": cmd_reformat,
+    "symbol": cmd_symbol,
+    "replace": cmd_replace,
+    "rename": cmd_rename,
+    "terminal": cmd_terminal,
+    "deps": cmd_deps,
+    "modules": cmd_modules,
+    "repos": cmd_repos,
+    "help": cmd_help,
+    "-h": cmd_help,
+    "--help": cmd_help,
+}
+
+
+def main():
+    if len(sys.argv) < 2:
+        cmd_help([])
+        sys.exit(0)
+
+    cmd = sys.argv[1]
+    args = sys.argv[2:]
+
+    if cmd not in COMMANDS:
+        print(f"Unknown command: {cmd}", file=sys.stderr)
+        print("Use 'jetbrains help' for usage", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        COMMANDS[cmd](args)
+    except ConnectionError as e:
+        print(f"Connection error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

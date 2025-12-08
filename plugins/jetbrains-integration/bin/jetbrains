@@ -1,0 +1,6 @@
+#!/bin/bash
+# JetBrains CLI wrapper for Claude Code
+# Usage: jetbrains <command> [args]
+
+PLUGIN_DIR="$(dirname "$(dirname "$(realpath "$0")")")"
+exec python3 "$PLUGIN_DIR/scripts/jetbrains-cli" "$@"

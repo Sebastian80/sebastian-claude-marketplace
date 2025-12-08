@@ -5,7 +5,7 @@ description: "Use when debugging PHP code with PhpStorm - set breakpoints, step 
 
 # JetBrains Debugger Skill
 
-Debug PHP code using PhpStorm's integrated debugger via MCP.
+Debug PHP code using PhpStorm's integrated debugger via CLI.
 
 ## Prerequisites
 
@@ -15,18 +15,23 @@ Debug PHP code using PhpStorm's integrated debugger via MCP.
 
 ## Quick Reference
 
-| Task | Tool |
-|------|------|
-| Set breakpoint | `mcp__jetbrains-debugger__set_breakpoint` |
-| Start debugging | `mcp__jetbrains-debugger__start_debug_session` |
-| Step over (next line) | `mcp__jetbrains-debugger__step_over` |
-| Step into (enter function) | `mcp__jetbrains-debugger__step_into` |
-| Step out (exit function) | `mcp__jetbrains-debugger__step_out` |
-| Continue to next breakpoint | `mcp__jetbrains-debugger__resume_execution` |
-| Get all variables | `mcp__jetbrains-debugger__get_variables` |
-| Evaluate expression | `mcp__jetbrains-debugger__evaluate_expression` |
-| Get stack trace | `mcp__jetbrains-debugger__get_stack_trace` |
-| Stop debugging | `mcp__jetbrains-debugger__stop_debug_session` |
+| Task | Command |
+|------|---------|
+| Set breakpoint | `jetbrains-debug bp set <file> <line>` |
+| List breakpoints | `jetbrains-debug bp list` |
+| Remove breakpoint | `jetbrains-debug bp remove <id>` |
+| List configs | `jetbrains-debug configs` |
+| Start debugging | `jetbrains-debug start <config>` |
+| Stop debugging | `jetbrains-debug stop` |
+| Step over | `jetbrains-debug step over` |
+| Step into | `jetbrains-debug step into` |
+| Step out | `jetbrains-debug step out` |
+| Continue | `jetbrains-debug continue` |
+| Get variables | `jetbrains-debug vars` |
+| Evaluate expression | `jetbrains-debug eval <expr>` |
+| Set variable | `jetbrains-debug set <var> <value>` |
+| Get stack trace | `jetbrains-debug stack` |
+| Get status | `jetbrains-debug status` |
 
 ## Standard Debugging Workflow
 
@@ -34,42 +39,33 @@ Debug PHP code using PhpStorm's integrated debugger via MCP.
 
 ```bash
 # Set breakpoint at specific line
-mcp__jetbrains-debugger__set_breakpoint(
-    file_path="/home/sebastian/workspace/hmkg/src/Meyer/MollieFixBundle/Decorator/PaymentMethod/MolliePaymentDecorator.php",
-    line=35
-)
+jetbrains-debug bp set src/Service/PaymentService.php 35
 
 # Conditional breakpoint (only stops when condition is true)
-mcp__jetbrains-debugger__set_breakpoint(
-    file_path="src/Service/PaymentService.php",
-    line=50,
-    condition="$amount > 100"
-)
+jetbrains-debug bp set src/Service/PaymentService.php 50 --condition "\$amount > 100"
 
 # Logpoint (logs without stopping)
-mcp__jetbrains-debugger__set_breakpoint(
-    file_path="src/Service/PaymentService.php",
-    line=50,
-    log_message="Amount is {$amount}",
-    suspend_policy="none"
-)
+jetbrains-debug bp set src/Service/PaymentService.php 50 --log "Amount is {\$amount}"
+
+# Temporary breakpoint (auto-removes after hit)
+jetbrains-debug bp set src/Service/PaymentService.php 30 --temp
 ```
 
 ### 2. List Available Debug Configurations
 
 ```bash
-mcp__jetbrains-debugger__list_run_configurations()
+jetbrains-debug configs
 ```
 
 Common configurations:
 - `PHP Debug` - Listen for Xdebug connections
 - `PHPUnit` - Debug unit tests
-- `Symfony Console` - Debug console commands
+- `Main` - Project-specific config
 
 ### 3. Start Debug Session
 
 ```bash
-mcp__jetbrains-debugger__start_debug_session(configuration_name="PHP Debug")
+jetbrains-debug start "PHP Debug"
 ```
 
 ### 4. Trigger the Code
@@ -84,57 +80,54 @@ Now trigger the code path you want to debug:
 Check current state:
 ```bash
 # Get full debug status (location, variables, stack)
-mcp__jetbrains-debugger__get_debug_session_status()
+jetbrains-debug status
 
 # Get just variables
-mcp__jetbrains-debugger__get_variables()
+jetbrains-debug vars
 
 # Get stack trace
-mcp__jetbrains-debugger__get_stack_trace()
+jetbrains-debug stack
 ```
 
 ### 6. Step Through Code
 
 ```bash
 # Step over - execute current line, stop at next
-mcp__jetbrains-debugger__step_over()
+jetbrains-debug step over
 
 # Step into - enter the function call
-mcp__jetbrains-debugger__step_into()
+jetbrains-debug step into
 
 # Step out - finish current function, stop at caller
-mcp__jetbrains-debugger__step_out()
+jetbrains-debug step out
 
 # Continue - run until next breakpoint
-mcp__jetbrains-debugger__resume_execution()
+jetbrains-debug continue
 
-# Run to specific line (temporary breakpoint)
-mcp__jetbrains-debugger__run_to_line(
-    file_path="src/Service/PaymentService.php",
-    line=75
-)
+# Run to specific line
+jetbrains-debug run-to src/Service/PaymentService.php 75
 ```
 
 ### 7. Inspect and Evaluate
 
 ```bash
 # Evaluate any expression
-mcp__jetbrains-debugger__evaluate_expression(expression="$this->paymentMethod->getIdentifier()")
+jetbrains-debug eval "\$this->paymentMethod->getIdentifier()"
 
 # Check specific variable
-mcp__jetbrains-debugger__evaluate_expression(expression="$paymentTransaction")
+jetbrains-debug eval "\$paymentTransaction"
 
 # Call methods
-mcp__jetbrains-debugger__evaluate_expression(expression="$entity->toArray()")
+jetbrains-debug eval "\$entity->toArray()"
 
 # Modify variable value
-mcp__jetbrains-debugger__set_variable(variable_name="amount", new_value="150.00")
+jetbrains-debug set amount "150.00"
 ```
 
 ### 8. Stop Session
 
 ```bash
-mcp__jetbrains-debugger__stop_debug_session()
+jetbrains-debug stop
 ```
 
 ## Common Debugging Scenarios
@@ -143,54 +136,48 @@ mcp__jetbrains-debugger__stop_debug_session()
 
 ```bash
 # 1. Find where the value is set (use Serena)
-$SERENA refs "ClassName/setProperty" src/Entity/ClassName.php --all
+serena refs "ClassName/setProperty" src/Entity/ClassName.php
 
 # 2. Set breakpoint at setter
-mcp__jetbrains-debugger__set_breakpoint(file_path="src/Entity/ClassName.php", line=45)
+jetbrains-debug bp set src/Entity/ClassName.php 45
 
 # 3. Start debug and trigger
-mcp__jetbrains-debugger__start_debug_session(configuration_name="PHP Debug")
+jetbrains-debug start "PHP Debug"
 
 # 4. When stopped, check call stack
-mcp__jetbrains-debugger__get_stack_trace()
+jetbrains-debug stack
 
 # 5. Evaluate the incoming value
-mcp__jetbrains-debugger__evaluate_expression(expression="$value")
+jetbrains-debug eval "\$value"
 ```
 
 ### Scenario 2: Debug Failed Payment
 
 ```bash
 # 1. Set breakpoint in payment method
-mcp__jetbrains-debugger__set_breakpoint(
-    file_path="src/Meyer/MollieFixBundle/Decorator/PaymentMethod/MolliePaymentDecorator.php",
-    line=30
-)
+jetbrains-debug bp set src/Meyer/MollieFixBundle/Decorator/PaymentMethod/MolliePaymentDecorator.php 30
 
 # 2. Start listening
-mcp__jetbrains-debugger__start_debug_session(configuration_name="PHP Debug")
+jetbrains-debug start "PHP Debug"
 
 # 3. Make payment attempt in browser
 
 # 4. When stopped, inspect transaction
-mcp__jetbrains-debugger__evaluate_expression(expression="$paymentTransaction->getResponse()")
-mcp__jetbrains-debugger__evaluate_expression(expression="$paymentTransaction->isSuccessful()")
+jetbrains-debug eval "\$paymentTransaction->getResponse()"
+jetbrains-debug eval "\$paymentTransaction->isSuccessful()"
 ```
 
 ### Scenario 3: Debug Event Listener
 
 ```bash
 # 1. Find the listener (use Serena)
-$SERENA find CustomerEntityListener --kind class --body --path src/
+serena find CustomerEntityListener --kind class
 
 # 2. Set breakpoint in event method
-mcp__jetbrains-debugger__set_breakpoint(
-    file_path="src/Meyer/CustomerBundle/EventListener/CustomerEntityListener.php",
-    line=50
-)
+jetbrains-debug bp set src/Meyer/CustomerBundle/EventListener/CustomerEntityListener.php 50
 
 # 3. Debug
-mcp__jetbrains-debugger__start_debug_session(configuration_name="PHP Debug")
+jetbrains-debug start "PHP Debug"
 
 # 4. Trigger entity save that fires the event
 ```
@@ -199,31 +186,20 @@ mcp__jetbrains-debugger__start_debug_session(configuration_name="PHP Debug")
 
 ```bash
 # List all breakpoints
-mcp__jetbrains-debugger__list_breakpoints()
+jetbrains-debug bp list
 
 # Remove specific breakpoint
-mcp__jetbrains-debugger__remove_breakpoint(breakpoint_id="bp_123")
+jetbrains-debug bp remove 123456789
 
-# Temporary breakpoint (auto-removes after hit)
-mcp__jetbrains-debugger__set_breakpoint(
-    file_path="src/Service/MyService.php",
-    line=30,
-    temporary=true
-)
+# Clear all breakpoints
+jetbrains-debug bp clear
 ```
 
 ## Thread Management (for async/queue workers)
 
 ```bash
 # List all threads
-mcp__jetbrains-debugger__list_threads()
-
-# Suspend only current thread (others continue)
-mcp__jetbrains-debugger__set_breakpoint(
-    file_path="src/Async/MessageHandler.php",
-    line=25,
-    suspend_policy="thread"
-)
+jetbrains-debug threads
 ```
 
 ## Troubleshooting
@@ -239,27 +215,37 @@ mcp__jetbrains-debugger__set_breakpoint(
 
 ```bash
 # In container
-php -v | grep -i xdebug
-
-# Check config
-php -i | grep xdebug
+docker exec hmkg-phpfpm php -v | grep -i xdebug
+docker exec hmkg-phpfpm php -i | grep xdebug
 ```
 
 ## Integration with Serena
 
-Use Serena for **finding** code, JetBrains for **debugging** it:
+Use Serena for **finding** code, JetBrains Debug for **debugging** it:
 
 ```bash
 # 1. Find the problematic method (Serena)
-$SERENA find processPayment --kind method --path src/
+serena find processPayment --kind method
 
-# 2. Get its documentation (JetBrains)
-mcp__jetbrains__get_symbol_info(filePath="src/Service/PaymentService.php", line=45, column=20)
+# 2. Find all callers (Serena)
+serena refs "PaymentService/processPayment" src/Service/PaymentService.php
 
-# 3. Find all callers (Serena)
-$SERENA refs "PaymentService/processPayment" src/Service/PaymentService.php
+# 3. Set breakpoint and debug (JetBrains Debug)
+jetbrains-debug bp set src/Service/PaymentService.php 45
+jetbrains-debug start "PHP Debug"
+```
 
-# 4. Set breakpoint and debug (JetBrains)
-mcp__jetbrains-debugger__set_breakpoint(file_path="src/Service/PaymentService.php", line=45)
-mcp__jetbrains-debugger__start_debug_session(configuration_name="PHP Debug")
+## Integration with JetBrains IDE Tools
+
+Use `jetbrains` CLI for IDE features alongside debugging:
+
+```bash
+# Get symbol info
+jetbrains symbol src/Service/PaymentService.php 45 20
+
+# Check file for errors
+jetbrains problems src/Service/PaymentService.php
+
+# Open file in editor
+jetbrains open src/Service/PaymentService.php
 ```
