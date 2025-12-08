@@ -22,6 +22,13 @@ if _lib_path.exists():
 import click
 from lib.client import get_jira_client
 from lib.output import format_output, format_table, success, error, warning
+from lib.workflow import (
+    WorkflowStore,
+    smart_transition,
+    PathNotFoundError,
+    WorkflowNotFoundError,
+    TransitionFailedError
+)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Helper Functions
@@ -122,94 +129,88 @@ def list_transitions(ctx, issue_key: str):
 
 @cli.command('do')
 @click.argument('issue_key')
-@click.argument('status_name')
-@click.option('--comment', '-c', help='Comment to add during transition')
+@click.argument('target_state')
+@click.option('--comment', '-c', is_flag=True, help='Add transition trail as comment')
 @click.option('--resolution', '-r', help='Resolution name (for closing transitions)')
-@click.option('--dry-run', is_flag=True, help='Show what would happen without making changes')
+@click.option('--dry-run', is_flag=True, help='Show path without executing')
 @click.pass_context
-def do_transition(ctx, issue_key: str, status_name: str,
-                  comment: str | None, resolution: str | None, dry_run: bool):
-    """Transition an issue to a new status.
+def do_transition(ctx, issue_key: str, target_state: str,
+                  comment: bool, resolution: str | None, dry_run: bool):
+    """Transition an issue to a new status (smart multi-step).
 
     ISSUE_KEY: The Jira issue key (e.g., PROJ-123)
 
-    STATUS_NAME: Target status name (e.g., "In Progress", "Done")
+    TARGET_STATE: Target status name (e.g., "In Progress", "Waiting for QA")
+
+    Automatically finds and executes the shortest path to the target state.
 
     Examples:
 
       jira-transition do PROJ-123 "In Progress"
 
-      jira-transition do PROJ-123 "Done" --resolution Fixed
+      jira-transition do PROJ-123 "Waiting for QA" --dry-run
 
-      jira-transition do PROJ-123 "Done" -c "Deployed to production" -r Fixed
+      jira-transition do PROJ-123 "Done" --comment
 
-      jira-transition do PROJ-123 "In Review" --dry-run
+      jira-transition do PROJ-123 "Geschlossen" -r Fixed
     """
     client = ctx.obj['client']
+    debug = ctx.obj['debug']
 
     try:
-        # Get available transitions
-        transitions = client.get_issue_transitions(issue_key)
+        store = WorkflowStore()
 
-        # Find matching transition (case-insensitive)
-        matching = None
-        for t in transitions:
-            if t.get('name', '').lower() == status_name.lower():
-                matching = t
-                break
-            # Also check target status name
-            to_status = _get_to_status(t)
-            if to_status.lower() == status_name.lower():
-                matching = t
-                break
-
-        if not matching:
-            available = [t.get('name', '') for t in transitions]
-            error(f"Transition '{status_name}' not available for {issue_key}")
-            print(f"\nAvailable transitions: {', '.join(available)}")
-            sys.exit(1)
-
-        # Dry run
-        if dry_run:
-            warning("DRY RUN - No transition will be performed")
-            print(f"\nWould transition {issue_key}:")
-            print(f"  Transition: {matching['name']}")
-            print(f"  To status: {_get_to_status(matching)}")
-            if comment:
-                print(f"  Comment: {comment}")
-            if resolution:
-                print(f"  Resolution: {resolution}")
-            return
-
-        # Build transition payload
-        fields = {}
+        # Handle resolution for closing transitions
+        # TODO: Add resolution support in v2
         if resolution:
-            fields['resolution'] = {'name': resolution}
+            warning("Resolution support coming in v2, ignoring for now")
 
-        # Perform transition
-        client.issue_transition(
-            issue_key,
-            matching['id'],
-            fields=fields if fields else None,
-            comment=comment
+        executed = smart_transition(
+            client=client,
+            issue_key=issue_key,
+            target_state=target_state,
+            store=store,
+            add_comment=comment,
+            dry_run=dry_run,
+            verbose=not ctx.obj['quiet']
         )
+
+        if dry_run:
+            if ctx.obj['json']:
+                format_output({
+                    'issue_key': issue_key,
+                    'dry_run': True,
+                    'path': [t.to_dict() for t in executed]
+                }, as_json=True)
+            return
 
         if ctx.obj['quiet']:
             print(issue_key)
         elif ctx.obj['json']:
             format_output({
-                'key': issue_key,
-                'transition': matching['name'],
-                'to_status': _get_to_status(matching)
+                'issue_key': issue_key,
+                'transitions': [t.to_dict() for t in executed],
+                'final_state': executed[-1].to if executed else target_state
             }, as_json=True)
         else:
-            success(f"Transitioned {issue_key}")
-            print(f"  Status: {_get_to_status(matching)}")
-            if comment:
-                print(f"  Comment added: {comment[:50]}...")
+            if executed:
+                success(f"Transitioned {issue_key} to '{executed[-1].to}'")
+            else:
+                success(f"{issue_key} already at '{target_state}'")
+
+    except PathNotFoundError as e:
+        error(f"No path to '{target_state}'")
+        print(f"  Reachable states: {', '.join(sorted(e.reachable))}")
+        sys.exit(1)
+
+    except TransitionFailedError as e:
+        error(f"Transition failed at '{e.current_state}'")
+        print(f"  Failed: {e.transition.name} → {e.transition.to}")
+        print(f"  Reason: {e.reason}")
+        sys.exit(1)
 
     except Exception as e:
-        if ctx.obj['debug']:
+        if debug:
             raise
         error(f"Failed to transition {issue_key}: {e}")
         sys.exit(1)

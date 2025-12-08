@@ -47,7 +47,7 @@ class DiscoveryError(WorkflowError):
 
 class TransitionFailedError(WorkflowError):
     """Transition execution failed."""
-    def __init__(self, issue_key: str, transition: Transition,
+    def __init__(self, issue_key: str, transition: "Transition",
                  current_state: str, reason: str):
         self.issue_key = issue_key
         self.transition = transition
