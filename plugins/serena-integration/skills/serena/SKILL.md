@@ -369,19 +369,92 @@ Examples:
   $SERENA_FULL recipe list          # Show all recipes
 ```
 
-### $SERENA_FULL memory - Persistent Storage
+### $SERENA_FULL memory - Professional Memory Management
+
+Memories support **folder organization** for better structure:
+
+```
+memories/
+├── active/           # Current work
+│   ├── tasks/        # In-progress tasks (HMKG-2064, etc.)
+│   └── sessions/     # Session continuity
+├── reference/        # Documentation
+│   ├── architecture/ # System design
+│   ├── patterns/     # Code patterns
+│   ├── integrations/ # External systems
+│   └── workflows/    # Dev processes
+├── learnings/        # Knowledge base
+│   ├── mistakes/     # Errors & solutions
+│   ├── discoveries/  # Useful findings
+│   └── commands/     # Helpful snippets
+├── archive/          # Historical (auto-organized by date)
+│   └── 2025-12/
+│       └── tasks/
+└── .templates/       # Reusable templates
+```
+
+#### Basic Operations
 
 ```bash
-$SERENA_FULL memory list                    # List all memories
+$SERENA_FULL memory list                    # List all memories (recursive)
+$SERENA_FULL memory list active/tasks       # List only active tasks
 $SERENA_FULL memory read <name>             # Read a memory
-$SERENA_FULL memory write <name> <content>  # Write (use - for stdin)
-$SERENA_FULL memory delete <name>           # Delete
+$SERENA_FULL memory write <name> <content>  # Write (folders auto-created)
+$SERENA_FULL memory delete <name>           # Delete (cleans empty dirs)
 
 Examples:
   $SERENA_FULL memory list
-  $SERENA_FULL memory read project_overview
-  $SERENA_FULL memory write task_context "Working on feature X"
-  echo "Multi-line content" | $SERENA_FULL memory write notes -
+  $SERENA_FULL memory list learnings
+  $SERENA_FULL memory read active/tasks/HMKG-2064
+  $SERENA_FULL memory write active/tasks/HMKG-2065 "## Task: Fix checkout"
+  echo "Multi-line content" | $SERENA_FULL memory write reference/notes -
+```
+
+#### Organization Commands
+
+```bash
+$SERENA_FULL memory tree                    # Visual tree of all memories
+$SERENA_FULL memory tree active             # Tree from subfolder
+$SERENA_FULL memory search <pattern>        # Search content (regex)
+$SERENA_FULL memory search "Mollie" --folder learnings
+$SERENA_FULL memory stats                   # Memory statistics
+
+Examples:
+  $SERENA_FULL memory tree
+  $SERENA_FULL memory search "checkout"
+  $SERENA_FULL memory search "error" --folder learnings/mistakes
+  $SERENA_FULL memory stats
+```
+
+#### Lifecycle Commands
+
+```bash
+$SERENA_FULL memory archive <name>          # Archive with date prefix
+$SERENA_FULL memory archive <name> --category tasks
+$SERENA_FULL memory mv <src> <dest>         # Move/rename
+$SERENA_FULL memory init                    # Create folder structure
+
+Examples:
+  # Archive completed task (moves to archive/2025-12/tasks/20251208_HMKG-2064)
+  $SERENA_FULL memory archive active/tasks/HMKG-2064 --category tasks
+
+  # Move memory to different folder
+  $SERENA_FULL memory mv old_notes learnings/discoveries/old_notes
+
+  # Initialize recommended structure with templates
+  $SERENA_FULL memory init
+```
+
+#### Memory Lifecycle
+
+```
+CREATE: Write to active/tasks/TICKET
+  ↓
+WORK: Update as you progress
+  ↓
+COMPLETE: Archive when done
+  ↓
+LEARNING: Extract insights to learnings/
 ```
 
 ### $SERENA_FULL edit - Symbol-based Editing
@@ -606,20 +679,38 @@ Multiple kinds: `--kind class interface` (space-separated)
 
 ## Session Persistence
 
+Use the folder structure for organized session continuity:
+
 ```bash
-# Save context before ending
-$SERENA_FULL memory write task_context "## Current Task
-Working on X feature
-## Progress
-- [x] Found classes
-- [ ] Implement changes
-## Key Files
-- src/Service/X.php"
+# Save task context to active/tasks folder
+$SERENA_FULL memory write active/tasks/HMKG-2064 "## Task: HMKG-2064
+### Status: in_progress
+### Completed
+- [x] Found affected classes
+- [x] Fixed payment surcharge
+### Remaining
+- [ ] Write tests
+### Key Files
+- src/Meyer/Bundle/MollieFixBundle/..."
+
+# Save session state
+$SERENA_FULL memory write active/sessions/current "## Session: $(date)
+### Worked On
+- HMKG-2064 payment fix
+### Blockers
+- None
+### Next Steps
+- Run tests"
 
 # Resume in next session
-$SERENA_FULL memory list
-$SERENA_FULL memory read task_context
+$SERENA_FULL memory tree active
+$SERENA_FULL memory read active/tasks/HMKG-2064
+
+# When task is done, archive it
+$SERENA_FULL memory archive active/tasks/HMKG-2064 --category tasks
 ```
+
+**Tip:** Use `/serena:load` and `/serena:save` commands for automated session handoff.
 
 ## Output Formats
 

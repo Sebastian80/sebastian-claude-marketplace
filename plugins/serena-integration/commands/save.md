@@ -6,7 +6,7 @@ allowed-tools:
 
 # /serena-save - Persist Session Context
 
-Save current session state for cross-session continuity.
+Save current session state using folder-organized memories.
 
 ## Execute These Steps
 
@@ -19,9 +19,9 @@ Before saving, analyze the current session:
 - What was learned (errors, patterns, insights)?
 - What should happen next?
 
-### 2. Save Session Context
+### 2. Save Session State
 ```bash
-/home/sebastian/.local/bin/serena memory write session_context "## Session: $(date '+%Y-%m-%d')
+/home/sebastian/.local/bin/serena memory write active/sessions/current "## Session: $(date '+%Y-%m-%d')
 
 ### What I Worked On
 - [list main tasks/topics from this session]
@@ -40,7 +40,7 @@ Before saving, analyze the current session:
 
 ### 3. Save Task Progress (if working on specific task)
 ```bash
-/home/sebastian/.local/bin/serena memory write task_progress "## Task: [task name]
+/home/sebastian/.local/bin/serena memory write active/tasks/HMKG-XXXX "## Task: [task name]
 
 ### Status: [in_progress|blocked|review|done]
 
@@ -52,43 +52,73 @@ Before saving, analyze the current session:
 - [ ] [next step]
 - [ ] [future step]
 
+### Key Files
+- [affected file paths]
+
 ### Notes
 [any important context for resuming]
 "
 ```
 
 ### 4. Save Learnings (if discovered something useful)
+
+For mistakes/errors:
 ```bash
-/home/sebastian/.local/bin/serena memory write learnings "## Learnings
+/home/sebastian/.local/bin/serena memory write learnings/mistakes/[topic] "## [Error description]
 
-### Patterns Discovered
-- [useful pattern or approach]
+### What Went Wrong
+[description]
 
-### Mistakes to Avoid
-- [error made] → [correct approach]
+### Root Cause
+[why it happened]
 
-### Useful Commands/Snippets
-\`\`\`bash
-[command that was helpful]
+### Solution
+[how to fix/avoid]
+"
+```
+
+For discoveries:
+```bash
+/home/sebastian/.local/bin/serena memory write learnings/discoveries/[topic] "## [Discovery]
+
+### Context
+[when you might need this]
+
+### Details
+[what you learned]
+
+### Example
+\`\`\`
+[code or commands]
 \`\`\`
 "
 ```
 
-### 5. Confirm Save
+### 5. Archive Completed Tasks (if any task is done)
 ```bash
-/home/sebastian/.local/bin/serena memory list
+# Archive completed tasks to preserve history
+/home/sebastian/.local/bin/serena memory archive active/tasks/HMKG-XXXX --category tasks
+```
+
+### 6. Confirm Save
+```bash
+/home/sebastian/.local/bin/serena memory tree active
+/home/sebastian/.local/bin/serena memory stats
 ```
 
 Report what was saved:
 ```
 ## Session Saved
 
-**Memories Updated:**
-- session_context (current state)
-- task_progress (task status)
-- learnings (if applicable)
+**Active Memories:**
+- active/sessions/current (session state)
+- active/tasks/[ticket] (task progress)
 
-**Timestamp**: [auto-added by CLI]
+**Learnings Added:**
+- learnings/[category]/[topic]
+
+**Archived:**
+- [any completed tasks]
 
 Ready for session handoff.
 ```
@@ -101,12 +131,26 @@ Save automatically when:
 - After completing a major task
 - When encountering a blocker that needs external input
 
-## Memory Naming Convention
+## Memory Folder Conventions
 
-| Memory | Purpose | When to Update |
-|--------|---------|----------------|
-| `session_context` | Current session state | Every /serena-save |
-| `task_progress` | Specific task tracking | When working on defined task |
-| `learnings` | Accumulated insights | When discovering patterns/mistakes |
-| `project_overview` | Project structure | Rarely, after major changes |
-| `[feature]_context` | Feature-specific | For complex multi-session features |
+| Folder | Purpose | When to Use |
+|--------|---------|-------------|
+| `active/sessions/current` | Current session state | Every /serena-save |
+| `active/tasks/TICKET` | Task-specific progress | One per active task |
+| `learnings/mistakes/` | Errors & solutions | After debugging issues |
+| `learnings/discoveries/` | Useful findings | When learning something new |
+| `learnings/commands/` | Helpful snippets | Useful CLI commands |
+| `reference/architecture/` | System design notes | After major exploration |
+| `reference/patterns/` | Code patterns | When documenting approaches |
+
+## Lifecycle
+
+```
+CREATE → active/tasks/TICKET
+  ↓
+UPDATE → As work progresses
+  ↓
+COMPLETE → archive with: serena memory archive active/tasks/TICKET --category tasks
+  ↓
+LEARNING → Extract insights to learnings/
+```

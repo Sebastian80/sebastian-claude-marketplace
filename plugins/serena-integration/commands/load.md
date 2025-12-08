@@ -7,7 +7,7 @@ allowed-tools:
 
 # /serena-load - Restore Session Context
 
-Quick session restoration with full context recovery.
+Quick session restoration with folder-organized memory recovery.
 
 ## Execute These Steps
 
@@ -21,22 +21,33 @@ If no project active or wrong project:
 /home/sebastian/.local/bin/serena activate "$(pwd)"
 ```
 
-### 2. List Available Memories
+### 2. Show Memory Structure
 ```bash
-/home/sebastian/.local/bin/serena memory list
+/home/sebastian/.local/bin/serena memory tree
 ```
 
-### 3. Load Core Memories (in parallel)
+### 3. Load Active Context (in parallel)
+
+Check what's in active folders:
 ```bash
-/home/sebastian/.local/bin/serena memory read session_context
-/home/sebastian/.local/bin/serena memory read task_progress
-/home/sebastian/.local/bin/serena memory read learnings
-/home/sebastian/.local/bin/serena memory read project_overview
+/home/sebastian/.local/bin/serena memory list active
 ```
 
-Read any memory that exists from the list.
+Load session and task memories:
+```bash
+/home/sebastian/.local/bin/serena memory read active/sessions/current
+/home/sebastian/.local/bin/serena memory list active/tasks
+```
 
-### 4. Report Session State
+For each active task, read its memory.
+
+### 4. Load Reference Context (if needed)
+```bash
+/home/sebastian/.local/bin/serena memory list reference
+/home/sebastian/.local/bin/serena memory list learnings
+```
+
+### 5. Report Session State
 
 Present a structured summary:
 
@@ -44,24 +55,36 @@ Present a structured summary:
 ## Session Restored
 
 **Project**: [project path]
-**Last Active**: [timestamp from session_context]
+**Last Active**: [timestamp from active/sessions/current]
 
-### Previous Progress
-[Summary from task_progress memory]
+### Active Tasks
+[List from active/tasks/ folder]
 
-### Open Tasks
-[Any incomplete items]
+### Previous Session
+[Summary from active/sessions/current]
 
 ### Key Learnings
-[From learnings memory]
+[From learnings/ folder if relevant]
 
 ### Ready to Continue
 [Suggest next actions based on context]
 ```
 
-## Memory Schema Expected
+## Memory Folder Structure
 
-**session_context**:
+```
+memories/
+├── active/
+│   ├── sessions/current    # Last session state
+│   └── tasks/              # In-progress tasks (HMKG-2064, etc.)
+├── reference/              # Architecture, patterns, integrations
+├── learnings/              # Mistakes, discoveries, commands
+└── archive/                # Completed work (auto-organized by date)
+```
+
+## Expected Memory Schemas
+
+**active/sessions/current**:
 ```markdown
 ## Session: [date]
 ### What I Worked On
@@ -75,7 +98,7 @@ Present a structured summary:
 [any problems encountered]
 ```
 
-**task_progress**:
+**active/tasks/TICKET**:
 ```markdown
 ## Task: [name]
 ### Status: [in_progress|blocked|done]
@@ -84,4 +107,6 @@ Present a structured summary:
 - [x] Step 2
 ### Remaining
 - [ ] Step 3
+### Key Files
+- [file paths]
 ```

@@ -383,9 +383,15 @@ def cmd_search(args, out: Output):
 
 
 def cmd_memory(args, out: Output):
-    """Memory operations."""
+    """Memory operations with folder support."""
     if args.memory_cmd == "list":
-        result = call("list_memories")
+        # Support optional folder filter and recursive flag
+        kwargs = {}
+        if hasattr(args, 'folder') and args.folder:
+            kwargs['folder'] = args.folder
+        if hasattr(args, 'no_recursive') and args.no_recursive:
+            kwargs['recursive'] = False
+        result = call("list_memories", **kwargs)
         if isinstance(result, str):
             result = json.loads(result)
         out.success(result)
@@ -411,6 +417,68 @@ def cmd_memory(args, out: Output):
         result = call("delete_memory", memory_file_name=args.name)
         out.info(f"Memory '{args.name}' deleted")
         out.success(result)
+
+    elif args.memory_cmd == "tree":
+        kwargs = {}
+        if hasattr(args, 'folder') and args.folder:
+            kwargs['folder'] = args.folder
+        result = call("tree_memories", **kwargs)
+        out.success(result)
+
+    elif args.memory_cmd == "search":
+        kwargs = {"pattern": args.pattern}
+        if hasattr(args, 'folder') and args.folder:
+            kwargs['folder'] = args.folder
+        result = call("search_memories", **kwargs)
+        if isinstance(result, str):
+            result = json.loads(result)
+        # Pretty-print search results
+        if out.json_mode:
+            out.success(result)
+        else:
+            if not result:
+                print("No matches found.")
+            else:
+                print(f"Found matches in {len(result)} memories:\n")
+                for match in result:
+                    print(f"  {match['memory']} ({match['matches']} matches)")
+                    for snippet in match.get('snippets', [])[:2]:
+                        snippet_clean = snippet.strip()[:60]
+                        print(f"    ...{snippet_clean}...")
+                    print()
+
+    elif args.memory_cmd == "archive":
+        kwargs = {"memory_file_name": args.name}
+        if hasattr(args, 'category') and args.category:
+            kwargs['category'] = args.category
+        result = call("archive_memory", **kwargs)
+        out.info(f"Memory '{args.name}' archived")
+        out.success(result)
+
+    elif args.memory_cmd == "mv":
+        result = call("move_memory", source=args.source, dest=args.dest)
+        out.info(f"Memory moved: '{args.source}' -> '{args.dest}'")
+        out.success(result)
+
+    elif args.memory_cmd == "init":
+        include_templates = not getattr(args, 'no_templates', False)
+        result = call("init_memories", include_templates=include_templates)
+        out.success(result)
+
+    elif args.memory_cmd == "stats":
+        result = call("memory_stats")
+        if isinstance(result, str):
+            result = json.loads(result)
+        if out.json_mode:
+            out.success(result)
+        else:
+            print("Memory Statistics:\n")
+            print(f"  Total memories: {result.get('total_count', 0)}")
+            print(f"  Total size: {result.get('total_size_human', 'N/A')}")
+            print(f"\n  By folder:")
+            for folder, info in result.get('by_folder', {}).items():
+                folder_display = folder if folder else "(root)"
+                print(f"    {folder_display}: {info['count']} memories, {info['size_human']}")
 
 
 def cmd_edit(args, out: Output):
@@ -755,17 +823,53 @@ Note: LSP indexes src/ before vendor/. Use --path src/ for faster results.
     p_search.add_argument("--glob", "-g", help="File glob filter")
 
     # memory
-    p_memory = subparsers.add_parser("memory", help="Memory operations")
+    p_memory = subparsers.add_parser("memory", help="Memory operations with folder support")
     mem_sub = p_memory.add_subparsers(dest="memory_cmd")
-    mem_sub.add_parser("list", help="List all memories")
+
+    # list - with optional folder filter
+    p_mem_list = mem_sub.add_parser("list", help="List memories (supports folder filter)")
+    p_mem_list.add_argument("folder", nargs="?", help="Folder to filter (e.g., active/tasks, learnings)")
+    p_mem_list.add_argument("--no-recursive", action="store_true", help="Don't include subfolders")
+
+    # read
     p_mem_read = mem_sub.add_parser("read", help="Read a memory")
-    p_mem_read.add_argument("name", help="Memory name")
-    p_mem_write = mem_sub.add_parser("write", help="Write a memory")
-    p_mem_write.add_argument("name", help="Memory name")
+    p_mem_read.add_argument("name", help="Memory name/path (e.g., active/tasks/HMKG-2064)")
+
+    # write - supports nested paths
+    p_mem_write = mem_sub.add_parser("write", help="Write a memory (folders auto-created)")
+    p_mem_write.add_argument("name", help="Memory name/path (e.g., active/tasks/new_task)")
     p_mem_write.add_argument("content", nargs="?", default="-", help="Content (- for stdin)")
     p_mem_write.add_argument("--no-timestamp", action="store_true", help="Don't add timestamp")
+
+    # delete
     p_mem_del = mem_sub.add_parser("delete", help="Delete a memory")
-    p_mem_del.add_argument("name", help="Memory name")
+    p_mem_del.add_argument("name", help="Memory name/path")
+
+    # tree - show folder structure
+    p_mem_tree = mem_sub.add_parser("tree", help="Show memory folder structure")
+    p_mem_tree.add_argument("folder", nargs="?", help="Start from subfolder")
+
+    # search - search content
+    p_mem_search = mem_sub.add_parser("search", help="Search memory contents (regex)")
+    p_mem_search.add_argument("pattern", help="Regex pattern to search for")
+    p_mem_search.add_argument("--folder", "-f", help="Limit search to folder")
+
+    # archive - move to archive with date
+    p_mem_archive = mem_sub.add_parser("archive", help="Archive memory (moves to archive/YYYY-MM/)")
+    p_mem_archive.add_argument("name", help="Memory to archive")
+    p_mem_archive.add_argument("--category", "-c", help="Category subfolder (e.g., tasks, sessions)")
+
+    # mv - move/rename
+    p_mem_mv = mem_sub.add_parser("mv", help="Move/rename a memory")
+    p_mem_mv.add_argument("source", help="Source memory path")
+    p_mem_mv.add_argument("dest", help="Destination path")
+
+    # init - initialize folder structure
+    p_mem_init = mem_sub.add_parser("init", help="Initialize recommended folder structure")
+    p_mem_init.add_argument("--no-templates", action="store_true", help="Skip template files")
+
+    # stats - show statistics
+    mem_sub.add_parser("stats", help="Show memory statistics")
 
     # edit
     p_edit = subparsers.add_parser("edit", help="Symbol-based editing")
