@@ -43,7 +43,7 @@ If you catch yourself thinking ANY of these, STOP:
 | "How does X work" / "Show me X" | `$SERENA find X --body` |
 | "Find all controllers/entities" | `$SERENA_FULL recipe controllers` |
 | "What methods does X have" | `$SERENA overview file.php` |
-| "Refactor X" / "Rename X" | `$SERENA refs` then `$SERENA_FULL edit` |
+| "Refactor X" / "Rename X" | `$SERENA refs` then `mcp__jetbrains__rename_refactoring` |
 
 ## When to Use vs When NOT to Use
 
@@ -58,6 +58,94 @@ If you catch yourself thinking ANY of these, STOP:
 
 **Rule:** Serena for CONFIGURED LANGUAGES. Grep for UNCONFIGURED/TEMPLATES/COMMENTS.
 **Note:** Run `$SERENA status` to see active languages. Edit `.serena/project.yml` to add more.
+
+## When to Use JetBrains MCP Instead
+
+JetBrains MCP tools are available automatically (no skill needed). Use them for these tasks:
+
+| Task | Use JetBrains MCP | Why |
+|------|-------------------|-----|
+| **Get PHPDoc/documentation** | `mcp__jetbrains__get_symbol_info` | Extracts docblocks, Serena only shows basic info |
+| **Safe project-wide rename** | `mcp__jetbrains__rename_refactoring` | Handles all references safely |
+| **Debug code** | `mcp__jetbrains-debugger__*` | Only option - full debugger |
+| **Run tests/builds** | `mcp__jetbrains__execute_run_configuration` | Only option |
+| **IDE inspections/errors** | `mcp__jetbrains__get_file_problems` | PHPStan-like analysis |
+| **Format code** | `mcp__jetbrains__reformat_file` | Apply IDE formatter |
+| **Open in IDE** | `mcp__jetbrains__open_file_in_editor` | Jump to location |
+
+### Serena vs JetBrains Decision Matrix
+
+| Task | Serena | JetBrains | Winner |
+|------|--------|-----------|--------|
+| Find class/method definition | `find X --kind class` | `search_in_files_by_text` | **Serena** (semantic) |
+| Find who calls this | `refs X file.php` | ❌ Not available | **Serena** (only option) |
+| Search vendor code | `find X --path vendor/` | ❌ Excluded | **Serena** (only option) |
+| Get symbol documentation | Basic output | Rich PHPDoc extraction | **JetBrains** |
+| Rename symbol | Manual with `edit rename` | Project-wide safe | **JetBrains** |
+| Quick text search in src/ | Slower (LSP overhead) | Instant | **JetBrains** (speed) |
+
+### Quick JetBrains MCP Reference
+
+```bash
+# Get symbol documentation (extracts PHPDoc)
+mcp__jetbrains__get_symbol_info(filePath="path/file.php", line=20, column=15)
+
+# Safe project-wide rename
+mcp__jetbrains__rename_refactoring(pathInProject="path/file.php", symbolName="oldName", newName="newName")
+
+# Check for IDE errors/warnings
+mcp__jetbrains__get_file_problems(filePath="path/file.php")
+
+# Run test or build configuration
+mcp__jetbrains__execute_run_configuration(configurationName="PHPUnit")
+
+# Quick text search (faster than Serena for simple searches)
+mcp__jetbrains__search_in_files_by_text(searchText="pattern", directoryToSearch="src", fileMask="*.php")
+```
+
+### Debugging Workflow (JetBrains Only)
+
+For debugging, use JetBrains MCP tools:
+
+```bash
+# 1. Set breakpoint
+mcp__jetbrains-debugger__set_breakpoint(file_path="path/file.php", line=50)
+
+# 2. Start debug session
+mcp__jetbrains-debugger__start_debug_session(configuration_name="PHP Debug")
+
+# 3. Step through code
+mcp__jetbrains-debugger__step_over()
+mcp__jetbrains-debugger__step_into()
+
+# 4. Inspect variables
+mcp__jetbrains-debugger__get_variables()
+mcp__jetbrains-debugger__evaluate_expression(expression="$variable")
+
+# 5. Stop session
+mcp__jetbrains-debugger__stop_debug_session()
+```
+
+### Combined Workflow Example
+
+**Refactoring a method:**
+
+```bash
+# 1. Find the method (Serena - semantic accuracy)
+$SERENA find calculateTotal --kind method --path src/
+
+# 2. Get documentation (JetBrains - extracts PHPDoc)
+mcp__jetbrains__get_symbol_info(filePath="src/Service/OrderService.php", line=45, column=20)
+
+# 3. Find all callers (Serena - only option)
+$SERENA refs "OrderService/calculateTotal" src/Service/OrderService.php --all
+
+# 4. Rename safely (JetBrains - project-wide)
+mcp__jetbrains__rename_refactoring(pathInProject="src/Service/OrderService.php", symbolName="calculateTotal", newName="computeOrderTotal")
+
+# 5. Verify no errors (JetBrains - IDE inspections)
+mcp__jetbrains__get_file_problems(filePath="src/Service/OrderService.php")
+```
 
 # Serena CLI - Semantic Code Intelligence (30+ Languages)
 

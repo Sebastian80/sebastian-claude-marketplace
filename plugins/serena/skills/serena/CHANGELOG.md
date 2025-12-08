@@ -1,5 +1,28 @@
 # Serena Skill Changelog
 
+## 2025-12-08: JetBrains MCP Integration
+
+### Added
+- **Tool Routing Matrix**: New section "When to Use JetBrains MCP Instead" with decision guidance
+- **Combined Workflow Examples**: Showing Serena + JetBrains working together
+- **JetBrains Quick Reference**: Common MCP tool examples in Serena skill
+- **jetbrains-debug skill**: New lightweight skill for debugging workflows
+
+### Changed
+- **Refactor trigger**: Now routes to `mcp__jetbrains__rename_refactoring` for safe project-wide renames
+- **Architecture understanding**: Documented that MCP tools work automatically (no skill needed for basic operations)
+
+### Key Insight
+- Serena excels at: semantic search, find references, vendor code
+- JetBrains excels at: PHPDoc extraction, safe refactoring, debugging, running tests
+- Both tools are complementary, not competing
+
+### Files Modified
+- `skills/serena/SKILL.md` - Added JetBrains routing section
+- `skills/jetbrains-debug/SKILL.md` - New skill for debugging workflows
+
+---
+
 ## 2025-12-07: Improved Output Formatting
 
 ### Changed
