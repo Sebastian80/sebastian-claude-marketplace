@@ -1,7 +1,78 @@
 {
   "_meta": {
     "version": 1,
-    "updated_at": null
+    "updated_at": "2025-12-08T17:11:34.789179"
   },
-  "issue_types": {}
+  "issue_types": {
+    "Sub: Technical task": {
+      "id": "13",
+      "discovered_from": "HMKG-2064",
+      "discovered_at": "2025-12-08T17:11:33.489226",
+      "states": {
+        "Waiting for QA": [
+          {
+            "id": "721",
+            "name": "Start QA",
+            "to": "QA / Revision"
+          },
+          {
+            "id": "731",
+            "name": "Resume work",
+            "to": "In Arbeit"
+          }
+        ],
+        "QA / Revision": [
+          {
+            "id": "751",
+            "name": "Require deployment",
+            "to": "Ready for deployment"
+          },
+          {
+            "id": "671",
+            "name": "Return for revision",
+            "to": "Neuer\u00f6ffnet"
+          },
+          {
+            "id": "661",
+            "name": "Done & close",
+            "to": "Geschlossen"
+          },
+          {
+            "id": "741",
+            "name": "Resume work",
+            "to": "In Arbeit"
+          },
+          {
+            "id": "791",
+            "name": "Done",
+            "to": "Fertig"
+          }
+        ],
+        "Ready for deployment": [
+          {
+            "id": "761",
+            "name": "Released & Close",
+            "to": "Geschlossen"
+          },
+          {
+            "id": "641",
+            "name": "Reopen",
+            "to": "Neuer\u00f6ffnet"
+          },
+          {
+            "id": "791",
+            "name": "Done",
+            "to": "Fertig"
+          }
+        ],
+        "Geschlossen": [
+          {
+            "id": "631",
+            "name": "Reopen",
+            "to": "Neuer\u00f6ffnet"
+          }
+        ]
+      }
+    }
+  }
 }
