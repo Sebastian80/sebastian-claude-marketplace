@@ -95,7 +95,8 @@ call_tool() {
   fi
 
   # Extract and format result (structuredContent.result is double-encoded JSON)
-  echo "$RAW" | jq -r '
+  local OUTPUT
+  OUTPUT=$(echo "$RAW" | jq -r '
     .result // {} |
     if .structuredContent.result then
       .structuredContent.result | if type == "string" then fromjson? // . else . end
@@ -106,7 +107,14 @@ call_tool() {
     else
       .
     end
-  ' 2>/dev/null
+  ' 2>/dev/null)
+
+  # Return output - success if we have any output at all
+  if [[ -n "$OUTPUT" ]]; then
+    echo "$OUTPUT"
+    return 0
+  fi
+  return 0
 }
 
 # Format symbol results - grouped by src/vendor and bundle
@@ -380,7 +388,22 @@ cmd_memory() {
 }
 
 cmd_status() {
-  call_tool "get_current_config" "{}"
+  local RESULT
+  RESULT=$(call_tool "get_current_config" "{}")
+
+  # Format as readable output
+  echo "$RESULT" | jq -r '
+    if type == "object" then
+      "Serena Status",
+      "─────────────────────────────",
+      "Project: \(.project // "not activated")",
+      "Root: \(.root // "N/A")",
+      if .languages then "Languages: \(.languages | join(", "))" else empty end,
+      if .indexed_files then "Indexed files: \(.indexed_files)" else empty end
+    else
+      .
+    end
+  ' 2>/dev/null || echo "$RESULT"
 }
 
 cmd_activate() {
@@ -508,7 +531,7 @@ case "${1:-}" in
     ;;
   ""|--help|-h)
     cat << 'HELP'
-serena-fast v2.1: Ultra-fast Serena CLI (pure bash + jq)
+serena-fast v2.2: Ultra-fast Serena CLI (pure bash + jq)
 
 Commands:
   find <pattern> [--kind TYPE] [--path dir] [--body] [--depth n]
