@@ -119,14 +119,16 @@ def parse_args(args: list[str]) -> tuple[dict, str]:
             key = arg[2:].replace("-", "_")
             if i + 1 < len(args) and not args[i + 1].startswith("-"):
                 val = args[i + 1]
-                if val.lower() in ("true", "yes", "1"):
-                    params[key] = True
-                elif val.lower() in ("false", "no", "0"):
-                    params[key] = False
-                else:
-                    try:
-                        params[key] = int(val)
-                    except ValueError:
+                # Try integer first (fixes --depth 1 being parsed as True)
+                try:
+                    params[key] = int(val)
+                except ValueError:
+                    # Then try explicit boolean strings (not "1"/"0" - those are ints)
+                    if val.lower() in ("true", "yes"):
+                        params[key] = True
+                    elif val.lower() in ("false", "no"):
+                        params[key] = False
+                    else:
                         params[key] = val
                 i += 2
             else:
@@ -161,9 +163,9 @@ def parse_args(args: list[str]) -> tuple[dict, str]:
     return params, method
 
 
-# Commands that require POST method
+# Commands that require POST method (checked against last path segment for nested commands)
 POST_COMMANDS = {
-    "activate", "write", "replace", "after", "before", "rename", "delete"
+    "activate", "write", "replace", "after", "before", "rename", "delete", "move", "archive"
 }
 
 
@@ -194,8 +196,16 @@ def format_result(result: dict, fmt: str) -> str:
         lines = []
         for item in data:
             if isinstance(item, dict):
+                # Memory search results: {memory, match_count, snippets}
+                if "memory" in item and "snippets" in item:
+                    mem = item.get("memory", "?")
+                    count = item.get("match_count", 0)
+                    snippets = item.get("snippets", [])
+                    lines.append(f"{CYAN}{mem}{RESET} {DIM}({count} matches){RESET}")
+                    for snippet in snippets[:3]:  # Show up to 3 snippets
+                        lines.append(f"  {DIM}{snippet}{RESET}")
                 # Tools output: {name, description}
-                if "description" in item and "kind" not in item:
+                elif "description" in item and "kind" not in item:
                     name = item.get("name", "?")
                     desc = item.get("description", "")
                     # Truncate long descriptions
@@ -206,17 +216,28 @@ def format_result(result: dict, fmt: str) -> str:
                 else:
                     name = item.get("name_path") or item.get("name", "?")
                     kind = item.get("kind", "")
+                    kind_map = {
+                        1: "File", 2: "Module", 3: "Namespace", 4: "Package",
+                        5: "Class", 6: "Method", 7: "Property", 8: "Field",
+                        9: "Constructor", 10: "Enum", 11: "Interface", 12: "Function",
+                        13: "Variable", 14: "Constant", 22: "Struct", 23: "Event",
+                    }
                     if isinstance(kind, int):
-                        kind = {
-                            1: "file", 2: "module", 3: "namespace", 4: "package",
-                            5: "class", 6: "method", 7: "property", 8: "field",
-                            9: "constructor", 10: "enum", 11: "interface", 12: "function",
-                            13: "variable", 14: "constant", 22: "struct", 23: "event",
-                        }.get(kind, str(kind))
+                        kind = kind_map.get(kind, str(kind))
                     file = item.get("relative_path") or item.get("file", "")
                     loc = item.get("body_location", {})
                     line = loc.get("start_line", 0) if loc else 0
                     lines.append(f"{CYAN}{name}{RESET} {DIM}({kind}) {file}:{line}{RESET}")
+                    # Display children if present (from --depth 1)
+                    children = item.get("children", [])
+                    for child in children:
+                        child_name = child.get("name_path") or child.get("name", "?")
+                        child_kind = child.get("kind", "")
+                        if isinstance(child_kind, int):
+                            child_kind = kind_map.get(child_kind, str(child_kind))
+                        child_loc = child.get("body_location") or child.get("location", {})
+                        child_line = child_loc.get("start_line") or child_loc.get("line", 0)
+                        lines.append(f"  {DIM}├─{RESET} {child_name} {DIM}({child_kind}) :{child_line}{RESET}")
             else:
                 lines.append(str(item))
         return "\n".join(lines)
@@ -278,8 +299,9 @@ def main():
         sys.exit(1)
 
     params, method = parse_args(rest)
-    # Force POST for certain commands
-    if command in POST_COMMANDS:
+    # Force POST for certain commands (check last segment for nested commands like memory/delete)
+    cmd_action = command.split("/")[-1] if "/" in command else command
+    if cmd_action in POST_COMMANDS:
         method = "POST"
     result = request(f"{plugin}/{command}", params, method)
     print(format_result(result, fmt))

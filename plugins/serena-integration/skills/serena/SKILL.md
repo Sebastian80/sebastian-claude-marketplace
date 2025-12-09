@@ -27,6 +27,17 @@ If you catch yourself thinking ANY of these, STOP:
 **If a Serena operation exists for your task, you MUST use it.**
 </EXTREMELY-IMPORTANT>
 
+## Critical: Project Activation
+
+**Before using any Serena commands, ensure the project is activated:**
+
+```bash
+serena status                                    # Check current project
+serena activate --project /path/to/project       # Activate if needed
+```
+
+If commands return empty results or timeout, the project is likely not activated.
+
 ## Quick Reference
 
 ### Finding Code
@@ -35,9 +46,12 @@ If you catch yourself thinking ANY of these, STOP:
 |------|---------|---------|
 | Find class | `serena find --pattern X --kind class` | `serena find --pattern Customer --kind class` |
 | Find method | `serena find --pattern X --kind method` | `serena find --pattern getName --kind method` |
-| Find with source | `serena find --pattern X --body true` | `serena find --pattern Customer --body true` |
-| Find with children | `serena find --pattern X --depth 1` | `serena find --pattern Service --depth 1 --body true` |
+| Find with source | `serena find --pattern X --body` | `serena find --pattern Customer --kind class --body` |
+| **Get class methods** | `serena find --pattern X --kind class --depth 1` | `serena find --pattern Service --kind class --depth 1` |
+| Find with children + source | `serena find --pattern X --kind class --depth 1 --body` | `serena find --pattern Service --kind class --depth 1 --body` |
 | Restrict to path | `serena find --pattern X --path src/` | `serena find --pattern Order --path src/Meyer/` |
+
+**Important:** Always use `--kind class` with `--depth 1` to get class methods. Without it, you'll get File children (namespace + class) instead of class children (methods, properties).
 
 ### Finding References (Who Calls This?)
 
@@ -57,10 +71,34 @@ serena refs --symbol "CustomerService/getCustomer" --file "src/Service/CustomerS
 | Task | Command |
 |------|---------|
 | Regex search | `serena search --pattern "implements.*Interface" --path src/` |
-| File structure | `serena overview --file src/Entity/Customer.php` |
+| File structure (top-level only) | `serena overview --file src/Entity/Customer.php` |
 | Find entities | `serena recipe --name entities` |
 | Find controllers | `serena recipe --name controllers` |
 | Check status | `serena status` |
+
+### Framework & Vendor Search
+
+| Task | Command |
+|------|---------|
+| List all recipes | `serena recipe --name list` |
+| **Oro Framework** | |
+| Oro payment classes | `serena recipe --name oro-payment` |
+| Oro checkout classes | `serena recipe --name oro-checkout` |
+| Oro order classes | `serena recipe --name oro-order` |
+| **Third-Party** | |
+| Mollie payment classes | `serena recipe --name mollie` |
+| Netresearch payment | `serena recipe --name netresearch-payment` |
+| **All Vendors** | |
+| Payment methods | `serena recipe --name payment-methods` |
+| Payment providers | `serena recipe --name payment-providers` |
+| Payment factories | `serena recipe --name payment-factories` |
+
+**Direct vendor search:**
+```bash
+serena find --pattern PaymentMethod --kind class --path vendor/       # All vendors
+serena find --pattern PaymentMethod --kind class --path vendor/oro    # Oro only
+serena find --pattern Mollie --kind class --path vendor/mollie        # Mollie only
+```
 
 ### Memory Commands (Nested with /)
 
@@ -91,10 +129,11 @@ serena tools --json                   # JSON format for parsing
 
 | User Request | Command |
 |--------------|---------|
-| "Find class X" / "Where is X defined" | `serena find --pattern X --body` |
+| "Find class X" / "Where is X defined" | `serena find --pattern X --kind class --body` |
 | "Who calls X" / "Find usages of X" | `serena refs --symbol X/method --file file.php` |
 | "Find all controllers/entities" | `serena recipe --name controllers` |
-| "What methods does X have" | `serena overview --file file.php` |
+| "What methods does X have" | `serena find --pattern X --kind class --depth 1` |
+| "Show me class X with all its code" | `serena find --pattern X --kind class --depth 1 --body` |
 
 ## When to Use vs NOT Use
 
@@ -118,12 +157,21 @@ Run `serena status` to see active languages.
 
 ## Performance
 
-Always use `--path` to restrict search scope:
+**Always use `--path` to restrict search scope:**
+
+| Scope | Files | Speed |
+|-------|-------|-------|
+| `--path src/` | ~350 | Fast (~0.5s) |
+| `--path vendor/oro` | ~5,000 | Medium (~3s) |
+| No path (all) | ~60,000 | Slow (~30s) |
 
 ```bash
-serena find --pattern Payment --path src/      # Fast: ~0.7s
-serena find --pattern Payment                   # Slow: ~28s (searches everything)
+serena find --pattern Payment --path src/        # Fast: your code only
+serena find --pattern Payment --path vendor/oro  # Medium: Oro framework
+serena find --pattern Payment                    # Slow: searches 60k files
 ```
+
+**Avoid parallel searches** - The LSP server processes requests sequentially. Running multiple serena commands simultaneously degrades performance. Run searches one at a time.
 
 ## Common Mistakes
 
@@ -132,6 +180,9 @@ serena find --pattern Payment                   # Slow: ~28s (searches everythin
 | "No symbols found" | Broaden pattern: `CustomerEntity` → `Customer` |
 | Empty refs | Use `serena find` first to get exact symbol path |
 | Very slow | Add `--path src/` to restrict scope |
+| Empty results | Run `serena status` - project may not be activated |
+| Overview doesn't show methods | Use `serena find --kind class --depth 1` instead |
+| refs returns nothing | Requires `--file` param with path to containing file |
 
 ## Deep Reference (Read Only When Needed)
 

@@ -39,9 +39,9 @@ Options:
   --pattern    Symbol pattern (required)
   --kind       Filter: class, method, interface, function
   --path       Restrict to directory
-  --body       Include source code (bool)
-  --depth      Traversal depth (0=symbol, 1=children)
-  --exact      Exact match only (bool)
+  --body       Include source code (flag, no value needed)
+  --depth      Traversal depth (0=symbol only, 1=include children)
+  --exact      Exact match only (flag)
 ```
 
 **Examples:**
@@ -49,9 +49,15 @@ Options:
 serena find --pattern Customer
 serena find --pattern Customer --kind class
 serena find --pattern "get*" --kind method
-serena find --pattern Customer --body
+serena find --pattern Customer --kind class --body
 serena find --pattern Order --path src/Meyer/
+
+# Get class with all methods (IMPORTANT: use --kind class with --depth 1)
+serena find --pattern Customer --kind class --depth 1
+serena find --pattern Customer --kind class --depth 1 --body
 ```
+
+**Gotcha:** Without `--kind class`, `--depth 1` returns File children (namespace + class), not class children (methods). Always combine `--kind class` with `--depth 1`.
 
 ### serena refs
 Find all references to a symbol.
@@ -72,7 +78,7 @@ serena refs --symbol ShippingMethod --file src/Method/ShippingMethod.php --all t
 ```
 
 ### serena overview
-Get file structure (symbols, methods, classes).
+Get **top-level** file structure (namespace, class names only - NOT methods).
 
 ```bash
 serena overview --file <path>
@@ -83,6 +89,8 @@ serena overview --file <path>
 serena overview --file src/Entity/Customer.php
 serena overview --file src/Service/PaymentService.php
 ```
+
+**Note:** To get class methods, use `serena find --pattern ClassName --kind class --depth 1` instead.
 
 ### serena search
 Regex search in code files.

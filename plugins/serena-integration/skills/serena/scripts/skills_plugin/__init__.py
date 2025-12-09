@@ -147,15 +147,40 @@ class SerenaPlugin(SkillPlugin):
             c = await get_client()
 
             recipes = {
+                # Project code (fast - src/ only)
                 "entities": lambda: c.search(r"#\[ORM\\Entity", glob="src/**/*.php"),
-                "controllers": lambda: c.find_symbol("Controller", kind="class"),
-                "services": lambda: c.find_symbol("Service", kind="class"),
-                "interfaces": lambda: c.find_symbol("Interface", kind="interface"),
-                "tests": lambda: c.find_symbol("Test", kind="class"),
+                "controllers": lambda: c.find_symbol("Controller", kind="class", path="src/"),
+                "services": lambda: c.find_symbol("Service", kind="class", path="src/"),
+                "interfaces": lambda: c.find_symbol("Interface", kind="interface", path="src/"),
+                "tests": lambda: c.find_symbol("Test", kind="class", path="src/"),
+                # Oro framework - specific patterns
+                "oro-payment": lambda: c.find_symbol("Payment", kind="class", path="vendor/oro"),
+                "oro-checkout": lambda: c.find_symbol("Checkout", kind="class", path="vendor/oro"),
+                "oro-order": lambda: c.find_symbol("Order", kind="class", path="vendor/oro"),
+                "oro-product": lambda: c.find_symbol("Product", kind="class", path="vendor/oro"),
+                "oro-customer": lambda: c.find_symbol("Customer", kind="class", path="vendor/oro"),
+                "oro-shipping": lambda: c.find_symbol("Shipping", kind="class", path="vendor/oro"),
+                "oro-events": lambda: c.find_symbol("Event", kind="class", path="vendor/oro/commerce/src/Oro/Bundle"),
+                # Third-party integrations
+                "mollie": lambda: c.find_symbol("Mollie", kind="class", path="vendor/mollie"),
+                "netresearch-payment": lambda: c.find_symbol("Payment", kind="class", path="vendor/netresearch"),
+                # Payment across ALL vendors (use specific pattern to limit results)
+                "payment-methods": lambda: c.find_symbol("PaymentMethod", kind="class", path="vendor/"),
+                "payment-providers": lambda: c.find_symbol("PaymentProvider", kind="class", path="vendor/"),
+                "payment-factories": lambda: c.find_symbol("PaymentFactory", kind="class", path="vendor/"),
+                "payment-interfaces": lambda: c.find_symbol("PaymentInterface", kind="interface", path="vendor/"),
             }
 
             if name == "list":
-                return success_response({"recipes": list(recipes.keys())})
+                categorized = {
+                    "project": ["entities", "controllers", "services", "interfaces", "tests"],
+                    "oro-framework": ["oro-payment", "oro-checkout", "oro-order",
+                                     "oro-product", "oro-customer", "oro-shipping", "oro-events"],
+                    "third-party": ["mollie", "netresearch-payment"],
+                    "payment-all-vendors": ["payment-methods", "payment-providers",
+                                           "payment-factories", "payment-interfaces"],
+                }
+                return success_response({"recipes": categorized})
 
             if name not in recipes:
                 return error_response(
@@ -195,11 +220,25 @@ class SerenaPlugin(SkillPlugin):
             result = await c.memory_write(name, content)
             return success_response(result)
 
-        @router.delete("/memory/delete")
+        @router.post("/memory/delete")
         async def memory_delete(name: str):
             """Delete a memory."""
             c = await get_client()
             result = await c.memory_delete(name)
+            return success_response(result)
+
+        @router.post("/memory/move")
+        async def memory_move(name: str, new_name: str):
+            """Move/rename a memory."""
+            c = await get_client()
+            result = await c.memory_move(name, new_name)
+            return success_response(result)
+
+        @router.post("/memory/archive")
+        async def memory_archive(name: str):
+            """Archive a memory."""
+            c = await get_client()
+            result = await c.memory_archive(name)
             return success_response(result)
 
         @router.get("/memory/tree")
@@ -217,6 +256,13 @@ class SerenaPlugin(SkillPlugin):
             """Search memories."""
             c = await get_client()
             result = await c.memory_search(pattern, folder)
+            return success_response(result)
+
+        @router.get("/memory/stats")
+        async def memory_stats():
+            """Get memory statistics."""
+            c = await get_client()
+            result = await c.memory_stats()
             return success_response(result)
 
         # Edit endpoints

@@ -601,6 +601,19 @@ class SerenaClient:
         result = await self._call_tool("archive_memory", args)
         return str(result.data)
 
+    async def memory_move(self, name: str, new_name: str) -> str:
+        """Move/rename a memory."""
+        result = await self._call_tool(
+            "move_memory",
+            {"source": name, "dest": new_name},
+        )
+        return str(result.data)
+
+    async def memory_stats(self) -> dict[str, Any]:
+        """Get memory statistics."""
+        result = await self._call_tool("memory_stats", {})
+        return result.data if isinstance(result.data, dict) else {"raw": str(result.data)}
+
     # =========================================================================
     # Edit Operations
     # =========================================================================
