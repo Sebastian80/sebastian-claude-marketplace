@@ -20,14 +20,14 @@ This is not optional. This is not a suggestion. Serena outperforms text-based to
 
 If you catch yourself thinking ANY of these, STOP:
 
-- "Let me just grep quickly" → WRONG. `$SERENA find` is faster AND accurate.
-- "I'll read the file to find the class" → WRONG. Use `$SERENA find X --body`.
-- "Grep will find all usages" → WRONG. Grep finds TEXT. `$SERENA refs` finds CODE REFERENCES.
-- "I know the file path already" → WRONG. Still use `$SERENA overview`.
+- "Let me just grep quickly" → WRONG. `serena find` is faster AND accurate.
+- "I'll read the file to find the class" → WRONG. Use `serena find X --body`.
+- "Grep will find all usages" → WRONG. Grep finds TEXT. `serena refs` finds CODE REFERENCES.
+- "I know the file path already" → WRONG. Still use `serena overview`.
 - "This is a simple search" → WRONG. Simple searches benefit MOST from semantic tools.
 - "I'll use the Task/Explore agent" → WRONG. Use Serena directly or serena-explore agent.
 - "Let me glob for files first" → WRONG. `serena-fast find` searches semantically.
-- "serena command not found" → WRONG. You must use the FULL PATH. See Setup section.
+- "serena command not found" → WRONG. Check your PATH includes `~/.local/bin`.
 
 **If a Serena operation exists for your task, you MUST use it.**
 </EXTREMELY-IMPORTANT>
@@ -38,12 +38,12 @@ If you catch yourself thinking ANY of these, STOP:
 
 | User Request Pattern | Serena Command |
 |---------------------|----------------|
-| "Find class X" / "Where is X defined" | `$SERENA find X --body` |
-| "Who calls X" / "Find usages of X" | `$SERENA refs X/method file.php` |
-| "How does X work" / "Show me X" | `$SERENA find X --body` |
-| "Find all controllers/entities" | `$SERENA_FULL recipe controllers` |
-| "What methods does X have" | `$SERENA overview file.php` |
-| "Refactor X" / "Rename X" | `$SERENA refs` then `mcp__jetbrains__rename_refactoring` |
+| "Find class X" / "Where is X defined" | `serena find X --body` |
+| "Who calls X" / "Find usages of X" | `serena refs X/method file.php` |
+| "How does X work" / "Show me X" | `serena find X --body` |
+| "Find all controllers/entities" | `serena recipe controllers` |
+| "What methods does X have" | `serena overview file.php` |
+| "Refactor X" / "Rename X" | `serena refs` then `mcp__jetbrains__rename_refactoring` |
 
 ## When to Use vs When NOT to Use
 
@@ -59,7 +59,7 @@ If you catch yourself thinking ANY of these, STOP:
 | YAML service definitions | AMD/RequireJS modules |
 
 **Rule:** Serena for CONFIGURED LANGUAGES. Grep for UNCONFIGURED/TEMPLATES/COMMENTS.
-**Note:** Run `$SERENA status` to see active languages. Edit `.serena/project.yml` to add more.
+**Note:** Run `serena status` to see active languages. Edit `.serena/project.yml` to add more.
 
 ## JavaScript Navigation (Special Case)
 
@@ -191,13 +191,13 @@ mcp__jetbrains-debugger__stop_debug_session()
 
 ```bash
 # 1. Find the method (Serena - semantic accuracy)
-$SERENA find calculateTotal --kind method --path src/
+serena find calculateTotal --kind method --path src/
 
 # 2. Get documentation (JetBrains - extracts PHPDoc)
 mcp__jetbrains__get_symbol_info(filePath="src/Service/OrderService.php", line=45, column=20)
 
 # 3. Find all callers (Serena - only option)
-$SERENA refs "OrderService/calculateTotal" src/Service/OrderService.php --all
+serena refs "OrderService/calculateTotal" src/Service/OrderService.php --all
 
 # 4. Rename safely (JetBrains - project-wide)
 mcp__jetbrains__rename_refactoring(pathInProject="src/Service/OrderService.php", symbolName="calculateTotal", newName="computeOrderTotal")
@@ -223,21 +223,21 @@ mcp__jetbrains__get_file_problems(filePath="src/Service/OrderService.php")
 
 ## Setup - CLI Wrapper
 
-**Use the unified CLI wrapper:** `/home/sebastian/.local/bin/serena`
+**Use the unified CLI wrapper:** `serena` (in PATH at `~/.local/bin/serena`)
 
 The wrapper automatically routes commands:
 - Fast commands (`find`, `refs`, `overview`, `status`, `search`) → serena-fast
 - Full commands (`recipe`, `memory`, `edit`, `tools`, `activate`) → full serena
 
-When this document shows `$SERENA`, substitute: `/home/sebastian/.local/bin/serena`
+All examples below use `serena` directly.
 
 **EXAMPLES:**
 ```bash
 # All commands use the same wrapper:
-/home/sebastian/.local/bin/serena find Customer
-/home/sebastian/.local/bin/serena refs "Customer/getName" src/Entity/Customer.php
-/home/sebastian/.local/bin/serena recipe entities
-/home/sebastian/.local/bin/serena memory list
+serena find Customer
+serena refs "Customer/getName" src/Entity/Customer.php
+serena recipe entities
+serena memory list
 ```
 
 ## MANDATORY First Action
@@ -245,7 +245,7 @@ When this document shows `$SERENA`, substitute: `/home/sebastian/.local/bin/sere
 Before ANY code exploration, run this:
 
 ```bash
-/home/sebastian/.local/bin/serena status
+serena status
 ```
 
 **Did not run this first? STOP. Run it NOW.**
@@ -275,28 +275,28 @@ All commands use the same wrapper - it routes automatically.
 
 ```bash
 # Check connection
-/home/sebastian/.local/bin/serena status
+serena status
 
 # Find a class
-/home/sebastian/.local/bin/serena find Customer --body
+serena find Customer --body
 
 # Find who calls a method
-/home/sebastian/.local/bin/serena refs "Customer/getName" src/Entity/Customer.php
+serena refs "Customer/getName" src/Entity/Customer.php
 
 # Get file structure
-/home/sebastian/.local/bin/serena overview src/Entity/Customer.php
+serena overview src/Entity/Customer.php
 
 # Common recipes
-/home/sebastian/.local/bin/serena recipe entities
-/home/sebastian/.local/bin/serena recipe controllers
+serena recipe entities
+serena recipe controllers
 ```
 
 ## Commands
 
-### $SERENA find - Find Symbols
+### serena find - Find Symbols
 
 ```bash
-$SERENA find <pattern> [options]
+serena find <pattern> [options]
 
 Options:
   --body, -b          Include symbol body code
@@ -307,52 +307,52 @@ Options:
   --json, -j          Output JSON format
 
 Examples:
-  $SERENA find Customer                    # Find anything with "Customer"
-  $SERENA find Customer --kind class       # Only classes
-  $SERENA find "get*" --kind method        # Methods starting with get
-  $SERENA find Customer --body             # Include implementation
-  $SERENA find Order --path src/Meyer/     # Restrict to directory
+  serena find Customer                    # Find anything with "Customer"
+  serena find Customer --kind class       # Only classes
+  serena find "get*" --kind method        # Methods starting with get
+  serena find Customer --body             # Include implementation
+  serena find Order --path src/Meyer/     # Restrict to directory
 ```
 
-### $SERENA refs - Find References
+### serena refs - Find References
 
 ```bash
-$SERENA refs <symbol> <file> [--all]
+serena refs <symbol> <file> [--all]
 
 Options:
   --all, -a    Show all references (default: top 10 files)
 
 Examples:
-  $SERENA refs "Customer/getName" src/Entity/Customer.php
-  $SERENA refs "ShippingMethod" src/Meyer/ShippingBundle/Method/ShippingMethod.php
-  $SERENA refs Tool src/tools.py --all   # Show all references
+  serena refs "Customer/getName" src/Entity/Customer.php
+  serena refs "ShippingMethod" src/Meyer/ShippingBundle/Method/ShippingMethod.php
+  serena refs Tool src/tools.py --all   # Show all references
 ```
 
-### $SERENA overview - File Structure
+### serena overview - File Structure
 
 ```bash
-$SERENA overview <file>
+serena overview <file>
 
 Examples:
-  $SERENA overview src/Entity/Customer.php
-  $SERENA overview src/Meyer/ShippingBundle/Provider/RatesProvider.php
+  serena overview src/Entity/Customer.php
+  serena overview src/Meyer/ShippingBundle/Provider/RatesProvider.php
 ```
 
-### $SERENA search - Regex Search
+### serena search - Regex Search
 
 ```bash
-$SERENA search <pattern> [--glob GLOB]
+serena search <pattern> [--glob GLOB]
 
 Examples:
-  $SERENA search "implements.*Interface" --glob "src/**/*.php"
-  $SERENA search "#\[ORM\\Entity" --glob "src/**/*.php"
-  $SERENA search "throw new.*Exception"
+  serena search "implements.*Interface" --glob "src/**/*.php"
+  serena search "#\[ORM\\Entity" --glob "src/**/*.php"
+  serena search "throw new.*Exception"
 ```
 
-### $SERENA_FULL recipe - Pre-built Operations
+### serena recipe - Pre-built Operations
 
 ```bash
-$SERENA_FULL recipe <name>
+serena recipe <name>
 
 Recipes:
   entities      Find all Doctrine entities (#[ORM\Entity])
@@ -364,12 +364,12 @@ Recipes:
   commands      Find all console commands
 
 Examples:
-  $SERENA_FULL recipe entities
-  $SERENA_FULL recipe controllers
-  $SERENA_FULL recipe list          # Show all recipes
+  serena recipe entities
+  serena recipe controllers
+  serena recipe list          # Show all recipes
 ```
 
-### $SERENA_FULL memory - Professional Memory Management
+### serena memory - Professional Memory Management
 
 Memories support **folder organization** for better structure:
 
@@ -396,53 +396,53 @@ memories/
 #### Basic Operations
 
 ```bash
-$SERENA_FULL memory list                    # List all memories (recursive)
-$SERENA_FULL memory list active/tasks       # List only active tasks
-$SERENA_FULL memory read <name>             # Read a memory
-$SERENA_FULL memory write <name> <content>  # Write (folders auto-created)
-$SERENA_FULL memory delete <name>           # Delete (cleans empty dirs)
+serena memory list                    # List all memories (recursive)
+serena memory list active/tasks       # List only active tasks
+serena memory read <name>             # Read a memory
+serena memory write <name> <content>  # Write (folders auto-created)
+serena memory delete <name>           # Delete (cleans empty dirs)
 
 Examples:
-  $SERENA_FULL memory list
-  $SERENA_FULL memory list learnings
-  $SERENA_FULL memory read active/tasks/HMKG-2064
-  $SERENA_FULL memory write active/tasks/HMKG-2065 "## Task: Fix checkout"
-  echo "Multi-line content" | $SERENA_FULL memory write reference/notes -
+  serena memory list
+  serena memory list learnings
+  serena memory read active/tasks/HMKG-2064
+  serena memory write active/tasks/HMKG-2065 "## Task: Fix checkout"
+  echo "Multi-line content" | serena memory write reference/notes -
 ```
 
 #### Organization Commands
 
 ```bash
-$SERENA_FULL memory tree                    # Visual tree of all memories
-$SERENA_FULL memory tree active             # Tree from subfolder
-$SERENA_FULL memory search <pattern>        # Search content (regex)
-$SERENA_FULL memory search "Mollie" --folder learnings
-$SERENA_FULL memory stats                   # Memory statistics
+serena memory tree                    # Visual tree of all memories
+serena memory tree active             # Tree from subfolder
+serena memory search <pattern>        # Search content (regex)
+serena memory search "Mollie" --folder learnings
+serena memory stats                   # Memory statistics
 
 Examples:
-  $SERENA_FULL memory tree
-  $SERENA_FULL memory search "checkout"
-  $SERENA_FULL memory search "error" --folder learnings/mistakes
-  $SERENA_FULL memory stats
+  serena memory tree
+  serena memory search "checkout"
+  serena memory search "error" --folder learnings/mistakes
+  serena memory stats
 ```
 
 #### Lifecycle Commands
 
 ```bash
-$SERENA_FULL memory archive <name>          # Archive with date prefix
-$SERENA_FULL memory archive <name> --category tasks
-$SERENA_FULL memory mv <src> <dest>         # Move/rename
-$SERENA_FULL memory init                    # Create folder structure
+serena memory archive <name>          # Archive with date prefix
+serena memory archive <name> --category tasks
+serena memory mv <src> <dest>         # Move/rename
+serena memory init                    # Create folder structure
 
 Examples:
   # Archive completed task (moves to archive/2025-12/tasks/20251208_HMKG-2064)
-  $SERENA_FULL memory archive active/tasks/HMKG-2064 --category tasks
+  serena memory archive active/tasks/HMKG-2064 --category tasks
 
   # Move memory to different folder
-  $SERENA_FULL memory mv old_notes learnings/discoveries/old_notes
+  serena memory mv old_notes learnings/discoveries/old_notes
 
   # Initialize recommended structure with templates
-  $SERENA_FULL memory init
+  serena memory init
 ```
 
 #### Memory Lifecycle
@@ -457,30 +457,30 @@ COMPLETE: Archive when done
 LEARNING: Extract insights to learnings/
 ```
 
-### $SERENA_FULL edit - Symbol-based Editing
+### serena edit - Symbol-based Editing
 
 ```bash
-$SERENA_FULL edit replace <symbol> <file> <body>   # Replace symbol body
-$SERENA_FULL edit after <symbol> <file> <code>     # Insert after symbol
-$SERENA_FULL edit before <symbol> <file> <code>    # Insert before symbol
-$SERENA_FULL edit rename <symbol> <file> <newname> # Rename symbol
+serena edit replace <symbol> <file> <body>   # Replace symbol body
+serena edit after <symbol> <file> <code>     # Insert after symbol
+serena edit before <symbol> <file> <code>    # Insert before symbol
+serena edit rename <symbol> <file> <newname> # Rename symbol
 
 Examples:
-  $SERENA_FULL edit replace "Customer/getName" src/Entity/Customer.php "return \$this->name;"
-  $SERENA_FULL edit after "Customer/__construct" src/Entity/Customer.php "public function newMethod() {}"
-  $SERENA_FULL edit rename "Customer/getName" src/Entity/Customer.php "getFullName"
+  serena edit replace "Customer/getName" src/Entity/Customer.php "return \$this->name;"
+  serena edit after "Customer/__construct" src/Entity/Customer.php "public function newMethod() {}"
+  serena edit rename "Customer/getName" src/Entity/Customer.php "getFullName"
 ```
 
-### $SERENA status - Check Connection
+### serena status - Check Connection
 
 ```bash
-$SERENA status                # Show config and active tools
+serena status                # Show config and active tools
 ```
 
-### $SERENA_FULL tools - List Serena Tools
+### serena tools - List Serena Tools
 
 ```bash
-$SERENA_FULL tools                 # List all available Serena operations
+serena tools                 # List all available Serena operations
 ```
 
 ## Autonomous Workflows
@@ -488,56 +488,56 @@ $SERENA_FULL tools                 # List all available Serena operations
 ### Workflow 1: Find Where X is Defined
 
 ```bash
-$SERENA find ClassName --body
-$SERENA overview path/from/result.php   # If need structure
+serena find ClassName --body
+serena overview path/from/result.php   # If need structure
 ```
 
 ### Workflow 2: Who Calls X
 
 ```bash
-$SERENA find ClassName/methodName       # Get file path
-$SERENA refs "ClassName/methodName" path/to/file.php
+serena find ClassName/methodName       # Get file path
+serena refs "ClassName/methodName" path/to/file.php
 ```
 
 ### Workflow 3: Full Exploration
 
 ```bash
-$SERENA find MainClass --body           # Find entry point
-$SERENA overview path/to/MainClass.php  # Get structure
-$SERENA refs MainClass path/to/file.php # Find integration points
-$SERENA_FULL memory read bundle_architecture # Check existing context
+serena find MainClass --body           # Find entry point
+serena overview path/to/MainClass.php  # Get structure
+serena refs MainClass path/to/file.php # Find integration points
+serena memory read bundle_architecture # Check existing context
 ```
 
 ### Workflow 4: Safe Refactoring
 
 ```bash
-$SERENA find X --body                   # Understand the symbol
-$SERENA refs X path/to/file.php         # Find ALL affected places
+serena find X --body                   # Understand the symbol
+serena refs X path/to/file.php         # Find ALL affected places
 # Review each reference
-$SERENA_FULL edit replace "X/method" file.php "new body"
+serena edit replace "X/method" file.php "new body"
 # Or for renames:
-$SERENA_FULL edit rename "X/oldMethod" file.php "newMethod"
+serena edit rename "X/oldMethod" file.php "newMethod"
 ```
 
 ### Workflow 5: Debug/Trace Issue
 
 ```bash
-$SERENA find ErrorClass/errorMethod --body   # Find error location
-$SERENA refs "ErrorClass/errorMethod" path.php   # Trace callers
+serena find ErrorClass/errorMethod --body   # Find error location
+serena refs "ErrorClass/errorMethod" path.php   # Trace callers
 # Repeat for each caller until root cause found
-$SERENA_FULL memory write debug_trace "## Call Chain: ..."
+serena memory write debug_trace "## Call Chain: ..."
 ```
 
 ## Anti-Patterns (NEVER DO THIS)
 
 | BAD (Text-based) | GOOD (Semantic) |
 |------------------|-----------------|
-| `grep "class Customer"` | `$SERENA find Customer --kind class` |
-| `grep "->getName("` | `$SERENA refs "Class/getName" file.php` |
-| `glob "**/*Customer*.php"` | `$SERENA find Customer` |
-| Read file to find class | `$SERENA overview file.php` |
-| Edit by line number | `$SERENA_FULL edit replace Symbol file.php` |
-| Generic Task/Explore agent | `$SERENA` directly or `serena-explore` agent |
+| `grep "class Customer"` | `serena find Customer --kind class` |
+| `grep "->getName("` | `serena refs "Class/getName" file.php` |
+| `glob "**/*Customer*.php"` | `serena find Customer` |
+| Read file to find class | `serena overview file.php` |
+| Edit by line number | `serena edit replace Symbol file.php` |
+| Generic Task/Explore agent | `serena` directly or `serena-explore` agent |
 
 ## Performance Best Practices
 
@@ -547,18 +547,18 @@ LSP must search the entire indexed codebase without `--path`. Use path restricti
 
 | Search | Time | Notes |
 |--------|------|-------|
-| `$SERENA find Payment --path src/` | **0.7s** | Custom code only |
-| `$SERENA find Payment --path vendor/mollie/` | **2-3s** | Specific vendor |
-| `$SERENA find Payment --path vendor/oro/` | **5-10s** | Large framework |
-| `$SERENA find Payment` (no path) | **28s+** | All indexed vendors |
+| `serena find Payment --path src/` | **0.7s** | Custom code only |
+| `serena find Payment --path vendor/mollie/` | **2-3s** | Specific vendor |
+| `serena find Payment --path vendor/oro/` | **5-10s** | Large framework |
+| `serena find Payment` (no path) | **28s+** | All indexed vendors |
 
 ```bash
 # FAST: Always specify path when you know the scope
-$SERENA find Payment --kind class --path src/
-$SERENA find Payment --kind class --path vendor/mollie/
+serena find Payment --kind class --path src/
+serena find Payment --kind class --path vendor/mollie/
 
 # SLOW: Avoid searching entire codebase
-$SERENA find Payment --kind class  # Searches everything
+serena find Payment --kind class  # Searches everything
 ```
 
 ### Vendor Exclusions
@@ -598,22 +598,22 @@ Start with broad patterns, narrow only if too many results:
 
 ```bash
 # GOOD: Start broad with path restriction
-$SERENA find Payment --path src/         # Custom code first
-$SERENA find Payment --kind class        # Only classes
-$SERENA find Payment                     # Full search if needed
+serena find Payment --path src/         # Custom code first
+serena find Payment --kind class        # Only classes
+serena find Payment                     # Full search if needed
 
 # BAD: Too specific (may fail during indexing)
-$SERENA find PaymentMethodProviderInterface  # Very specific name
-$SERENA find Oro\\Bundle\\PaymentBundle      # Namespaces often fail
+serena find PaymentMethodProviderInterface  # Very specific name
+serena find Oro\\Bundle\\PaymentBundle      # Namespaces often fail
 ```
 
 ### Good vs Bad Search Patterns
 
 | ❌ BAD | ✅ GOOD |
 |--------|---------|
-| `$SERENA find PaymentMethodInterface` | `$SERENA find Payment --kind interface` |
-| `$SERENA find CustomerEntityListener` | `$SERENA find Customer --kind class` |
-| `$SERENA find addDeSpecificationsOnPrePersist` | `$SERENA find addDe --kind method` |
+| `serena find PaymentMethodInterface` | `serena find Payment --kind interface` |
+| `serena find CustomerEntityListener` | `serena find Customer --kind class` |
+| `serena find addDeSpecificationsOnPrePersist` | `serena find addDe --kind method` |
 
 ### 3-Strike Rule
 
@@ -621,15 +621,15 @@ Try up to 3 progressively broader patterns before falling back:
 
 ```bash
 # Strike 1: Specific
-$SERENA find PaymentMethodInterface --kind interface
+serena find PaymentMethodInterface --kind interface
 # Exit 1? → broaden
 
 # Strike 2: Shorter
-$SERENA find PaymentMethod --kind interface
+serena find PaymentMethod --kind interface
 # Exit 1? → broaden more
 
 # Strike 3: Minimal
-$SERENA find Payment --kind interface
+serena find Payment --kind interface
 # Exit 1? → fall back to grep
 ```
 
@@ -639,10 +639,10 @@ LSP indexes `src/` before `vendor/`. During initial indexing:
 
 ```bash
 # Likely works (local code indexed first):
-$SERENA find Customer --path src/Meyer/
+serena find Customer --path src/Meyer/
 
 # May fail until fully indexed:
-$SERENA find Mollie --path vendor/
+serena find Mollie --path vendor/
 ```
 
 **State what's happening:** "Serena can't find X in vendor/ yet (still indexing), using grep"
@@ -683,7 +683,7 @@ Use the folder structure for organized session continuity:
 
 ```bash
 # Save task context to active/tasks folder
-$SERENA_FULL memory write active/tasks/HMKG-2064 "## Task: HMKG-2064
+serena memory write active/tasks/HMKG-2064 "## Task: HMKG-2064
 ### Status: in_progress
 ### Completed
 - [x] Found affected classes
@@ -694,7 +694,7 @@ $SERENA_FULL memory write active/tasks/HMKG-2064 "## Task: HMKG-2064
 - src/Meyer/Bundle/MollieFixBundle/..."
 
 # Save session state
-$SERENA_FULL memory write active/sessions/current "## Session: $(date)
+serena memory write active/sessions/current "## Session: $(date)
 ### Worked On
 - HMKG-2064 payment fix
 ### Blockers
@@ -703,11 +703,11 @@ $SERENA_FULL memory write active/sessions/current "## Session: $(date)
 - Run tests"
 
 # Resume in next session
-$SERENA_FULL memory tree active
-$SERENA_FULL memory read active/tasks/HMKG-2064
+serena memory tree active
+serena memory read active/tasks/HMKG-2064
 
 # When task is done, archive it
-$SERENA_FULL memory archive active/tasks/HMKG-2064 --category tasks
+serena memory archive active/tasks/HMKG-2064 --category tasks
 ```
 
 **Tip:** Use `/serena:load` and `/serena:save` commands for automated session handoff.
@@ -717,9 +717,9 @@ $SERENA_FULL memory archive active/tasks/HMKG-2064 --category tasks
 The CLI outputs optimized human-readable format by default, JSON with `-j` flag:
 
 ```bash
-$SERENA find Customer              # Human-readable (token-efficient)
-$SERENA -j find Customer           # JSON for processing
-$SERENA -j find Customer | jq '.[] | .name_path'
+serena find Customer              # Human-readable (token-efficient)
+serena -j find Customer           # JSON for processing
+serena -j find Customer | jq '.[] | .name_path'
 ```
 
 ### Human-Readable Output Examples
@@ -772,8 +772,8 @@ Found 12 matches in 5 files
 ## Verification
 
 ```bash
-$SERENA status              # Check connection, list tools
-$SERENA find Controller     # Test semantic search works
+serena status              # Check connection, list tools
+serena find Controller     # Test semantic search works
 ```
 
 ## Architecture: How Serena Works
@@ -781,7 +781,7 @@ $SERENA find Controller     # Test semantic search works
 ```
 ┌─────────────────────┐      HTTP POST       ┌────────────────────────┐
 │ serena CLI          │ ◄──────────────────► │ Serena MCP Server      │
-│ ~/.../scripts/serena│   localhost:9121     │ (Centralized)          │
+│ ~/.local/bin/serena │   localhost:9121     │ (Centralized)          │
 │                     │                      │                        │
 │ Python wrapper that │                      │ ┌────────────────────┐ │
 │ translates commands │                      │ │ Language Servers   │ │
@@ -808,15 +808,15 @@ $SERENA find Controller     # Test semantic search works
 
 | Problem | Cause | Fix |
 |---------|-------|-----|
-| "No symbols found" | Pattern too specific or project not activated | Broaden pattern (`CustomerEntity` → `Customer`), run `$SERENA status` |
-| "No references found" | Wrong symbol path format | Use `$SERENA find X` first to get exact path, then use that in `refs` |
-| refs empty but method IS called | Called from config files, not code | Combine: `$SERENA refs` for code + `grep` for YAML/XML configs |
-| overview too brief | Shows structure only, not implementation | Use `$SERENA find X --body` instead |
-| Connection errors | Server not running | Run `$SERENA status`, check localhost:9121 |
-| Project not indexed | First activation needs time | Wait a few seconds after `$SERENA_FULL activate`, then retry |
-| "command not found" | Using bare `serena` without path | **ALWAYS use `$SERENA` variable with full path** |
+| "No symbols found" | Pattern too specific or project not activated | Broaden pattern (`CustomerEntity` → `Customer`), run `serena status` |
+| "No references found" | Wrong symbol path format | Use `serena find X` first to get exact path, then use that in `refs` |
+| refs empty but method IS called | Called from config files, not code | Combine: `serena refs` for code + `grep` for YAML/XML configs |
+| overview too brief | Shows structure only, not implementation | Use `serena find X --body` instead |
+| Connection errors | Server not running | Run `serena status`, check localhost:9121 |
+| Project not indexed | First activation needs time | Wait a few seconds after `serena activate`, then retry |
+| "command not found" | `serena` not in PATH | Ensure `~/.local/bin` is in your PATH |
 
-**Key rule for refs:** Always `$SERENA find X` first → copy exact symbol path → use in `$SERENA refs "ExactPath" file.php`
+**Key rule for refs:** Always `serena find X` first → copy exact symbol path → use in `serena refs "ExactPath" file.php`
 
 ## Common Symbol Path Patterns
 
@@ -834,7 +834,7 @@ $SERENA find Controller     # Test semantic search works
 The refs command shows **files and context where the symbol is referenced**, grouped by file:
 
 ```bash
-$SERENA refs "RatesProvider/getPricesForTypes" src/Meyer/ShippingBundle/Provider/RatesProvider.php
+serena refs "RatesProvider/getPricesForTypes" src/Meyer/ShippingBundle/Provider/RatesProvider.php
 
 # Returns:
 # 12 references to 'RatesProvider/getPricesForTypes'

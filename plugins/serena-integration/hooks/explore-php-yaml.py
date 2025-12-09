@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """
-Extend Explore agent with Serena context for PHP/YAML projects.
+Extend Explore agent with Serena LSP context.
 
-PreToolUse hook that injects Serena tool instructions into Explore agent's
-prompt for PHP and YAML code navigation.
+PreToolUse hook that injects Serena CLI tool instructions into Explore agent's
+prompt for semantic code navigation.
 
 Triggers when:
 - Tool: Task with subagent_type: Explore
-- Project has: composer.json
 
 Exit codes:
   0 = allow (with optional JSON output for modifications)
@@ -16,40 +15,39 @@ Exit codes:
 """
 import json
 import sys
-import os
 
 SERENA_CONTEXT = """
-<serena-php-context>
-## Serena LSP Tools for PHP/YAML
+<serena-context>
+## Serena LSP Tools (via CLI)
 
-This project has Serena (Intelephense LSP). Use Serena for PHP code navigation:
+Use `serena <command>` for semantic code navigation:
 
-| Task | Serena Tool | Instead of |
-|------|-------------|------------|
-| Find class/method definition | `serena find "ClassName"` | Grep |
-| Find all callers/usages | `serena refs "Class/method" file.php` | Grep |
-| Get file structure | `serena overview file.php` | Reading entire file |
-| Pattern search in code | `serena search "pattern"` | Grep |
+| Task | Command | Instead of |
+|------|---------|------------|
+| Find symbol definition | `serena find_symbol "ClassName"` | Grep |
+| Find all references/callers | `serena find_referencing_symbols "Class::method"` | Grep |
+| Get file/class structure | `serena get_symbols_overview file.php` | Reading file |
+| Pattern search in code | `serena search_for_pattern "pattern"` | Grep |
+| List directory contents | `serena list_dir path/` | ls |
+| Find files by pattern | `serena find_file "*.php"` | Glob |
 
-### When to Use Serena (PHP/YAML)
-- Finding PHP class, method, function definitions
+### When to Use Serena
+- Finding class, method, function definitions (any language with LSP)
 - Finding who calls a method (references)
-- Understanding class structure
-- Navigating Symfony/Oro services and entities
-- Works on vendor code (Oro, Symfony, Doctrine)
+- Understanding class/file structure
+- Navigating framework code (Symfony, Oro, Doctrine)
+- Works in vendor/ directories
 
 ### When to Use Grep Instead
-- Searching YAML config values (strings, not symbols)
-- Searching non-PHP files (md, json, xml)
-- Literal text search in logs/comments
-- When you need regex across all file types
+- YAML/JSON config values (strings, not symbols)
+- Literal text in comments/logs
+- Regex across all file types
 
 ### Serena Advantages
 - Exact file:line locations
-- Understands PHP namespaces and inheritance
-- Works in vendor/ directories
+- Understands namespaces and inheritance
 - Symbol-aware (not text matching)
-</serena-php-context>
+</serena-context>
 
 """
 
@@ -73,14 +71,7 @@ def main():
     if subagent_type != "Explore":
         sys.exit(0)
 
-    # Check if PHP project (composer.json is the indicator)
-    project_dir = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
-    has_composer = os.path.exists(os.path.join(project_dir, "composer.json"))
-
-    if not has_composer:
-        # Not a PHP project - don't inject Serena context
-        sys.exit(0)
-
+    # Always inject Serena context for Explore agents
     # Extend prompt with Serena context
     original_prompt = tool_input.get("prompt", "")
     extended_prompt = SERENA_CONTEXT + original_prompt
