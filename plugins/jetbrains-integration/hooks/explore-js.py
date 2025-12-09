@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """
-Extend Explore agent with JetBrains MCP context for JS projects.
+Extend Explore agent with JetBrains IDE context.
 
-PreToolUse hook that injects JetBrains MCP tool instructions into Explore agent's
-prompt for JavaScript code navigation, especially legacy AMD-style code.
+PreToolUse hook that injects JetBrains CLI tool instructions into Explore agent's
+prompt for IDE-powered code navigation.
 
 Triggers when:
 - Tool: Task with subagent_type: Explore
-- Project has: package.json (without composer.json, to avoid conflict with PHP projects)
 
 Exit codes:
   0 = allow (with optional JSON output for modifications)
@@ -16,40 +15,42 @@ Exit codes:
 """
 import json
 import sys
-import os
 
 JETBRAINS_CONTEXT = """
-<jetbrains-js-context>
-## JetBrains MCP Tools for JavaScript
+<jetbrains-context>
+## JetBrains IDE Tools (via CLI)
 
-This project has JetBrains MCP integration. Use JetBrains for JS code navigation:
+Use `jetbrains <command>` for IDE-powered code navigation:
 
-| Task | JetBrains MCP Tool | Instead of |
-|------|-------------------|------------|
-| Find files by name | `mcp__jetbrains__find_files_by_name_keyword` | Glob |
-| Search text in files | `mcp__jetbrains__search_in_files_by_text` | Grep |
-| Search with regex | `mcp__jetbrains__search_in_files_by_regex` | Grep |
-| Get symbol info/docs | `mcp__jetbrains__get_symbol_info` | Reading file |
-| Find files by glob | `mcp__jetbrains__find_files_by_glob` | Glob |
+| Task | Command | Instead of |
+|------|---------|------------|
+| Find files by name | `jetbrains files "keyword"` | Glob |
+| Find files by glob | `jetbrains glob "**/*.js"` | Glob |
+| Search text in files | `jetbrains search "text"` | Grep |
+| Search with regex | `jetbrains regex "pattern"` | Grep |
+| Get symbol info | `jetbrains symbol file.js:line:col` | Reading file |
+| Get file problems | `jetbrains problems file.js` | Manual check |
+| Directory tree | `jetbrains tree path/` | tree |
+| Read file | `jetbrains read file.js` | cat |
 
-### When to Use JetBrains MCP (JavaScript)
-- Finding JS/TS files by name
-- Searching in JS/TS code
-- Understanding legacy AMD-style modules
-- Getting symbol documentation
+### When to Use JetBrains CLI
+- Searching JS/TS code
+- Understanding legacy AMD/RequireJS modules
+- Getting IDE-detected problems/errors
+- Symbol information with documentation
 - PhpStorm handles messy JS better than basic LSP
 
 ### When to Use Grep Instead
 - Simple literal text search
-- Searching across all file types
-- When you need specific regex features
+- Searching non-indexed file types
+- When IDE is not running
 
 ### JetBrains Advantages
-- Understands PhpStorm's indexing
+- Uses PhpStorm's indexing
 - Better handling of legacy AMD/RequireJS
 - Integrated with IDE context
-- Faster than manual file reading
-</jetbrains-js-context>
+- Shows IDE-detected errors
+</jetbrains-context>
 
 """
 
@@ -73,15 +74,7 @@ def main():
     if subagent_type != "Explore":
         sys.exit(0)
 
-    # Check if JS project (has package.json)
-    # Both hooks can fire for mixed PHP+JS projects
-    project_dir = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
-    has_package = os.path.exists(os.path.join(project_dir, "package.json"))
-
-    if not has_package:
-        # Not a JS project
-        sys.exit(0)
-
+    # Always inject JetBrains context for Explore agents
     # Extend prompt with JetBrains context
     original_prompt = tool_input.get("prompt", "")
     extended_prompt = JETBRAINS_CONTEXT + original_prompt

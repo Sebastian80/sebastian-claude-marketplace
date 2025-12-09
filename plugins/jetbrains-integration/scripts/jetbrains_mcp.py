@@ -6,6 +6,38 @@ import threading
 import queue
 import time
 import sys
+import subprocess
+import shutil
+
+
+def _try_dismiss_dialog():
+    """Try to dismiss modal dialogs in PhpStorm/IntelliJ using xdotool.
+
+    Modal dialogs block the JetBrains MCP server. This function sends Escape
+    key to dismiss them. Returns True if xdotool is available and command ran.
+    """
+    xdotool = shutil.which("xdotool")
+    if not xdotool:
+        return False
+
+    try:
+        # Find PhpStorm/IntelliJ windows and send Escape key
+        subprocess.run(
+            [xdotool, "search", "--name", "PhpStorm", "key", "Escape"],
+            capture_output=True,
+            timeout=2
+        )
+        # Also try IntelliJ IDEA
+        subprocess.run(
+            [xdotool, "search", "--name", "IntelliJ IDEA", "key", "Escape"],
+            capture_output=True,
+            timeout=2
+        )
+        # Give IDE time to process
+        time.sleep(0.5)
+        return True
+    except (subprocess.TimeoutExpired, subprocess.SubprocessError):
+        return False
 
 
 class JetBrainsMCP:
@@ -120,12 +152,26 @@ class JetBrainsMCP:
 
         raise TimeoutError(f"No response for request {req_id} within {timeout}s")
 
-    def call_tool(self, name, arguments=None, timeout=30):
-        """Call a tool by name and return the result"""
-        result = self.call("tools/call", {
-            "name": name,
-            "arguments": arguments or {}
-        }, timeout=timeout)
+    def call_tool(self, name, arguments=None, timeout=30, retry_with_dismiss=True):
+        """Call a tool by name and return the result.
+
+        If retry_with_dismiss is True and a timeout occurs, attempts to dismiss
+        any modal dialogs in PhpStorm using xdotool and retries once.
+        """
+        try:
+            result = self.call("tools/call", {
+                "name": name,
+                "arguments": arguments or {}
+            }, timeout=timeout)
+        except TimeoutError:
+            if retry_with_dismiss and _try_dismiss_dialog():
+                # Retry once after dismissing dialog
+                result = self.call("tools/call", {
+                    "name": name,
+                    "arguments": arguments or {}
+                }, timeout=timeout)
+            else:
+                raise
 
         if "error" in result:
             raise RuntimeError(f"Tool error: {result['error']}")

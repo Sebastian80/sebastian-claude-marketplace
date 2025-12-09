@@ -42,6 +42,13 @@
       "version": "1.0.0",
       "source": "./plugins/confluence-integration",
       "category": "productivity"
+    },
+    {
+      "name": "skills-daemon",
+      "description": "Central FastAPI daemon for Claude Code skills. Plugin architecture with auto-discovery, concurrent requests, API docs at /docs.",
+      "version": "1.0.0",
+      "source": "./plugins/skills-daemon",
+      "category": "infrastructure"
     }
   ]
 }
