@@ -26,7 +26,7 @@ If you catch yourself thinking ANY of these, STOP:
 - "I know the file path already" → WRONG. Still use `serena overview`.
 - "This is a simple search" → WRONG. Simple searches benefit MOST from semantic tools.
 - "I'll use the Task/Explore agent" → WRONG. Use Serena directly or serena-explore agent.
-- "Let me glob for files first" → WRONG. `serena-fast find` searches semantically.
+- "Let me glob for files first" → WRONG. `serena find` searches semantically.
 - "serena command not found" → WRONG. Check your PATH includes `~/.local/bin`.
 
 **If a Serena operation exists for your task, you MUST use it.**
@@ -223,11 +223,20 @@ mcp__jetbrains__get_file_problems(filePath="src/Service/OrderService.php")
 
 ## Setup - CLI Wrapper
 
-**Use the unified CLI wrapper:** `serena` (in PATH at `~/.local/bin/serena`)
+**Use the unified CLI:** `serena` (in PATH at `~/.local/bin/serena`)
 
-The wrapper automatically routes commands:
-- Fast commands (`find`, `refs`, `overview`, `status`, `search`) → serena-fast
-- Full commands (`recipe`, `memory`, `edit`, `tools`, `activate`) → full serena
+The CLI uses a daemon architecture for fast responses (~120ms vs ~270ms):
+- HTTP daemon keeps Python interpreter and connections warm
+- Thin stdlib-only client minimizes startup overhead
+- Daemon auto-starts on first use, auto-stops after 30min idle
+
+**Daemon commands:**
+```bash
+serena daemon status    # Check if daemon is running
+serena daemon start     # Start daemon manually
+serena daemon stop      # Stop daemon
+serena daemon restart   # Restart daemon
+```
 
 All examples below use `serena` directly.
 
@@ -575,9 +584,9 @@ ignored_paths:
 
 Keep only what you need: `oro/*`, `mollie/*`, `meyer/*`, `netresearch/*`
 
-### serena-fast Grouped Output
+### Grouped Output
 
-The fast CLI groups results by src/vendor and bundle:
+The CLI groups results by src/vendor and bundle:
 
 ```
 === src ===
@@ -779,29 +788,30 @@ serena find Controller     # Test semantic search works
 ## Architecture: How Serena Works
 
 ```
-┌─────────────────────┐      HTTP POST       ┌────────────────────────┐
-│ serena CLI          │ ◄──────────────────► │ Serena MCP Server      │
-│ ~/.local/bin/serena │   localhost:9121     │ (Centralized)          │
-│                     │                      │                        │
-│ Python wrapper that │                      │ ┌────────────────────┐ │
-│ translates commands │                      │ │ Language Servers   │ │
-│ to MCP tool calls   │                      │ │ (30+ LSP backends) │ │
-└─────────────────────┘                      │ └────────────────────┘ │
-                                             │                        │
-                                             │ Semantic code analysis:│
-                                             │ - Symbol indexing      │
-                                             │ - Type inference       │
-                                             │ - Reference tracking   │
-                                             │ - Project-wide search  │
-                                             └────────────────────────┘
+┌─────────────────────┐    HTTP     ┌─────────────────────┐    HTTP     ┌────────────────────────┐
+│ serena CLI (thin)   │ ◄─────────► │ Serena Daemon       │ ◄─────────► │ Serena MCP Server      │
+│ ~/.local/bin/serena │  :9122      │ (keeps Python warm) │  :9121      │ (Centralized)          │
+│                     │             │                     │             │                        │
+│ stdlib-only client  │             │ serena_daemon/      │             │ ┌────────────────────┐ │
+│ (~10ms startup)     │             │ - httpx pooling     │             │ │ Language Servers   │ │
+│                     │             │ - 30min idle timeout│             │ │ (30+ LSP backends) │ │
+└─────────────────────┘             └─────────────────────┘             │ └────────────────────┘ │
+                                                                        │                        │
+                                                                        │ Semantic code analysis:│
+                                                                        │ - Symbol indexing      │
+                                                                        │ - Type inference       │
+                                                                        │ - Reference tracking   │
+                                                                        │ - Project-wide search  │
+                                                                        └────────────────────────┘
 ```
 
 **Key points:**
-- The `serena` CLI is just a thin Python wrapper
-- All semantic intelligence comes from the MCP server
-- The server runs language-specific LSP backends (30+ languages supported)
-- Session state is managed via HTTP headers (`mcp-session-id`)
-- Project activation is required before searching
+- **3-tier architecture:** thin client → local daemon → MCP server
+- **Performance:** ~120ms per command (vs ~270ms without daemon)
+- The daemon keeps Python interpreter and httpx connections warm
+- Auto-starts on first use, auto-stops after 30min idle
+- Session state managed via HTTP headers (`mcp-session-id`)
+- Project activation required before searching
 - Languages configured in `.serena/project.yml`
 
 ## Troubleshooting
