@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Serena CLI - Fast daemon-based interface
+# Uses thin stdlib client → HTTP daemon → Serena MCP server
+# Target latency: ~50ms (vs ~200ms with full Python imports)
+
+set -e
+
+SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+VENV_PYTHON="$SCRIPT_DIR/.venv/bin/python"
+
+# Use stdlib-only daemon client for speed
+export PYTHONPATH="$SCRIPT_DIR:$PYTHONPATH"
+exec "$VENV_PYTHON" -m serena_daemon.client "$@"
