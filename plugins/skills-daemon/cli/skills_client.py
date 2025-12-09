@@ -191,19 +191,29 @@ def format_result(result: dict, fmt: str) -> str:
         lines = []
         for item in data:
             if isinstance(item, dict):
-                name = item.get("name_path") or item.get("name", "?")
-                kind = item.get("kind", "")
-                if isinstance(kind, int):
-                    kind = {
-                        1: "file", 2: "module", 3: "namespace", 4: "package",
-                        5: "class", 6: "method", 7: "property", 8: "field",
-                        9: "constructor", 10: "enum", 11: "interface", 12: "function",
-                        13: "variable", 14: "constant", 22: "struct", 23: "event",
-                    }.get(kind, str(kind))
-                file = item.get("relative_path") or item.get("file", "")
-                loc = item.get("body_location", {})
-                line = loc.get("start_line", 0) if loc else 0
-                lines.append(f"{CYAN}{name}{RESET} {DIM}({kind}) {file}:{line}{RESET}")
+                # Tools output: {name, description}
+                if "description" in item and "kind" not in item:
+                    name = item.get("name", "?")
+                    desc = item.get("description", "")
+                    # Truncate long descriptions
+                    if len(desc) > 60:
+                        desc = desc[:57] + "..."
+                    lines.append(f"{CYAN}{name:30}{RESET} {DIM}{desc}{RESET}")
+                # Symbol output: {name_path, kind, relative_path, ...}
+                else:
+                    name = item.get("name_path") or item.get("name", "?")
+                    kind = item.get("kind", "")
+                    if isinstance(kind, int):
+                        kind = {
+                            1: "file", 2: "module", 3: "namespace", 4: "package",
+                            5: "class", 6: "method", 7: "property", 8: "field",
+                            9: "constructor", 10: "enum", 11: "interface", 12: "function",
+                            13: "variable", 14: "constant", 22: "struct", 23: "event",
+                        }.get(kind, str(kind))
+                    file = item.get("relative_path") or item.get("file", "")
+                    loc = item.get("body_location", {})
+                    line = loc.get("start_line", 0) if loc else 0
+                    lines.append(f"{CYAN}{name}{RESET} {DIM}({kind}) {file}:{line}{RESET}")
             else:
                 lines.append(str(item))
         return "\n".join(lines)

@@ -166,6 +166,13 @@ class SerenaPlugin(SkillPlugin):
             result = await recipes[name]()
             return success_response(result)
 
+        @router.get("/tools")
+        async def tools():
+            """List available Serena MCP tools (dynamic discovery)."""
+            c = await get_client()
+            result = await c.get_tools()
+            return success_response(result)
+
         # Memory endpoints
         @router.get("/memory/list")
         async def memory_list(folder: Optional[str] = Query(None)):

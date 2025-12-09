@@ -484,15 +484,58 @@ class SerenaClient:
         result = await self._call_tool("search_for_pattern", args)
         return result.data if isinstance(result.data, dict) else {}
 
-    async def get_status(self) -> dict:
+    async def get_status(self) -> str:
         """
         Get current Serena configuration and status.
 
         Returns:
-            Configuration dictionary with project, languages, etc.
+            Configuration text with project, languages, active tools, etc.
         """
         result = await self._call_tool("get_current_config", {})
-        return result.data if isinstance(result.data, dict) else {}
+        return str(result.data) if result.data else ""
+
+    async def get_tools(self) -> list[dict]:
+        """
+        Get list of available Serena MCP tools.
+
+        Returns:
+            List of tool dictionaries with name and description.
+
+        Example:
+            >>> tools = await client.get_tools()
+            >>> for t in tools:
+            ...     print(f"{t['name']}: {t['description'][:50]}")
+        """
+        if not self._client or not self._session:
+            raise SessionError("Not connected. Call connect() first.")
+
+        payload = {
+            "jsonrpc": "2.0",
+            "id": self._next_id(),
+            "method": "tools/list",
+            "params": {},
+        }
+
+        response = await self._client.post(
+            self.url,
+            json=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json, text/event-stream",
+                "mcp-session-id": self._session.session_id,
+            },
+        )
+        response.raise_for_status()
+
+        # Parse SSE response
+        data = self._parse_sse_response(response.text, payload["id"])
+        tools = data.get("result", {}).get("tools", [])
+
+        # Return simplified tool info
+        return [
+            {"name": t.get("name", ""), "description": t.get("description", "")}
+            for t in tools
+        ]
 
     async def activate_project(self, project: Optional[str] = None) -> str:
         """
