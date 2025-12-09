@@ -2,6 +2,18 @@
 
 LSP Symbol Kinds used by Serena/Intelephense.
 
+## Symbol Path Convention
+
+When using `--symbol` with `serena refs` or edit commands:
+
+| Type | Format | Example |
+|------|--------|---------|
+| Class | `ClassName` | `Customer` |
+| Method | `Class/method` | `Customer/getName` |
+| Constructor | `Class/__construct` | `Customer/__construct` |
+| Property | `Class/$property` | `Customer/$name` |
+| Nested | `Outer/Inner/method` | `OrderService/Handler/process` |
+
 ## Common Kinds
 
 | Kind | Name | Description | Example |
