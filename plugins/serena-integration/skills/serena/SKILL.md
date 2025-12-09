@@ -1,6 +1,6 @@
 ---
 name: serena
-description: "Use when grep returns too many matches, you need to find all method callers, or want to understand codebase structure - semantic code navigation via LSP that replaces grep/glob with symbol-aware search across 30+ languages. Finds exact definitions, all references, file structure without text-matching noise. Triggers: where is X defined, who calls this, find all usages, show class structure, find implementations"
+description: "MANDATORY for code navigation - use INSTEAD of grep/glob when finding definitions, callers, or code structure. Semantic LSP search across PHP, Python, JS, Go, Rust, Java. Triggers: where is X defined, find class, find method, who calls this, find usages, show methods, find implementations, what calls this, find references, show class structure"
 ---
 
 <EXTREMELY-IMPORTANT>
@@ -29,23 +29,62 @@ If you catch yourself thinking ANY of these, STOP:
 
 ## Quick Reference
 
-**Discovery:** Run `serena tools` to see all available MCP tools dynamically.
+### Finding Code
+
+| Task | Command | Example |
+|------|---------|---------|
+| Find class | `serena find --pattern X --kind class` | `serena find --pattern Customer --kind class` |
+| Find method | `serena find --pattern X --kind method` | `serena find --pattern getName --kind method` |
+| Find with source | `serena find --pattern X --body true` | `serena find --pattern Customer --body true` |
+| Find with children | `serena find --pattern X --depth 1` | `serena find --pattern Service --depth 1 --body true` |
+| Restrict to path | `serena find --pattern X --path src/` | `serena find --pattern Order --path src/Meyer/` |
+
+### Finding References (Who Calls This?)
+
+```bash
+# Step 1: Find the symbol to get exact path
+serena find --pattern CustomerService --kind class
+
+# Step 2: Find who uses it
+serena refs --symbol "CustomerService" --file "src/Service/CustomerService.php"
+
+# For a method:
+serena refs --symbol "CustomerService/getCustomer" --file "src/Service/CustomerService.php"
+```
+
+### Search & Discovery
 
 | Task | Command |
 |------|---------|
-| Find symbol | `serena find --pattern Customer --kind class` |
-| Find with source | `serena find --pattern Customer --body` |
-| Who calls this? | `serena refs --symbol "Class/method" --file path.php` |
-| File structure | `serena overview --file path.php` |
-| Regex search | `serena search --pattern "regex" --path src/` |
+| Regex search | `serena search --pattern "implements.*Interface" --path src/` |
+| File structure | `serena overview --file src/Entity/Customer.php` |
+| Find entities | `serena recipe --name entities` |
+| Find controllers | `serena recipe --name controllers` |
 | Check status | `serena status` |
-| List tools | `serena tools` |
 
-**Nested commands use slash notation:**
+### Memory Commands (Nested with /)
+
 ```bash
-serena memory/list
-serena memory/tree
-serena edit/replace --symbol X --file Y --body Z
+serena memory/list                    # List all memories
+serena memory/tree                    # Visual tree
+serena memory/read --name X           # Read memory
+serena memory/search --pattern X      # Search memories
+```
+
+### Edit Commands (Nested with /)
+
+```bash
+serena edit/replace --symbol X --file Y --body "new code"
+serena edit/after --symbol X --file Y --code "code to insert"
+serena edit/rename --symbol X --file Y --new_name Z
+```
+
+### Tool Discovery
+
+If you need a command NOT listed above, run:
+```bash
+serena tools                          # Lists ALL available MCP tools
+serena tools --json                   # JSON format for parsing
 ```
 
 ## Automatic Triggers
@@ -94,10 +133,14 @@ serena find --pattern Payment                   # Slow: ~28s (searches everythin
 | Empty refs | Use `serena find` first to get exact symbol path |
 | Very slow | Add `--path src/` to restrict scope |
 
-## Detailed Reference
+## Deep Reference (Read Only When Needed)
 
-For full CLI syntax, see `references/cli-reference.md`.
+These files contain detailed documentation. Only read them if the quick reference above doesn't answer your question:
 
-For symbol kinds, see `references/symbol-kinds.md`.
+| File | When to Read |
+|------|--------------|
+| `references/cli-reference.md` | Need exact parameter syntax or all options |
+| `references/symbol-kinds.md` | Need to filter by specific symbol type |
+| `references/editing-patterns.md` | Doing complex code edits |
 
-For editing patterns, see `references/editing-patterns.md`.
+**For most tasks, the Quick Reference above is sufficient.**

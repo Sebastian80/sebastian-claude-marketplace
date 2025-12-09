@@ -151,8 +151,11 @@ def parse_args(args: list[str]) -> tuple[dict, str]:
         print(f"{YELLOW}Warning:{RESET} Positional args ignored. Use --param value", file=sys.stderr)
         print(f"  Got: {positionals}", file=sys.stderr)
 
-    # POST for write operations
-    if any(k in params for k in ("content", "body", "code", "new_name")):
+    # POST for write operations (body=True for include_body is NOT a write op)
+    if any(k in params for k in ("content", "code", "new_name")):
+        method = "POST"
+    # body param with string value (actual code body) triggers POST
+    if "body" in params and isinstance(params["body"], str):
         method = "POST"
 
     return params, method
