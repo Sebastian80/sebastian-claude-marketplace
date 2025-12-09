@@ -121,10 +121,14 @@ def daemon_request(
 
 def format_symbol(symbol: dict, show_body: bool = False) -> str:
     """Format a symbol for display."""
-    kind = symbol.get("kind", "unknown")
-    name = symbol.get("name", "?")
-    file = symbol.get("file", "")
-    line = symbol.get("line", 0)
+    # Handle both API formats (name_path vs name, relative_path vs file)
+    kind = symbol.get("kind", "unknown").lower()
+    name = symbol.get("name_path") or symbol.get("name", "?")
+    file = symbol.get("relative_path") or symbol.get("file", "")
+
+    # Line from body_location or direct
+    body_loc = symbol.get("body_location", {})
+    line = body_loc.get("start_line") if body_loc else symbol.get("line", 0)
 
     # Color by kind
     kind_colors = {
@@ -197,12 +201,20 @@ def format_result(endpoint: str, data: Any, args: dict) -> str:
         if not data:
             return f"{YELLOW}No symbols in file{RESET}"
 
+        # Kind number to name mapping (LSP SymbolKind)
+        kind_map = {
+            3: "namespace", 5: "class", 6: "method", 7: "property",
+            11: "interface", 12: "function", 14: "constant"
+        }
+
         output = []
         for symbol in data:
             indent = "  " * symbol.get("depth", 0)
-            kind = symbol.get("kind", "")
-            name = symbol.get("name", "")
-            line = symbol.get("line", 0)
+            kind_num = symbol.get("kind", 0)
+            kind = kind_map.get(kind_num, str(kind_num)) if isinstance(kind_num, int) else kind_num
+            name = symbol.get("name_path") or symbol.get("name", "")
+            body_loc = symbol.get("body_location", {})
+            line = body_loc.get("start_line", 0) if body_loc else symbol.get("line", 0)
             output.append(f"{indent}{CYAN}{name}{RESET} {DIM}({kind} L{line}){RESET}")
         return "\n".join(output)
 
@@ -211,11 +223,26 @@ def format_result(endpoint: str, data: Any, args: dict) -> str:
             return f"{YELLOW}No matches found{RESET}"
 
         output = []
-        for match in data:
-            file = match.get("file", "")
-            line = match.get("line", 0)
-            text = match.get("text", "").strip()
-            output.append(f"{DIM}{file}:{line}{RESET}\n  {text}")
+        # Data is dict {file: [match_lines]} or list of dicts
+        if isinstance(data, dict):
+            for file, matches in data.items():
+                # Shorten path
+                display_file = file
+                if "/src/" in file:
+                    display_file = file.split("/src/")[-1]
+                output.append(f"{DIM}{display_file}{RESET}")
+                for match in matches:
+                    output.append(f"  {match.strip()}")
+        else:
+            # Fallback for list format
+            for match in data:
+                if isinstance(match, dict):
+                    file = match.get("file", "")
+                    line = match.get("line", 0)
+                    text = match.get("text", "").strip()
+                    output.append(f"{DIM}{file}:{line}{RESET}\n  {text}")
+                else:
+                    output.append(str(match))
         return "\n".join(output)
 
     elif endpoint == "status":
@@ -225,6 +252,27 @@ def format_result(endpoint: str, data: Any, args: dict) -> str:
         if "projects" in data:
             output.append(f"  Available: {', '.join(data['projects'])}")
         return "\n".join(output)
+
+    elif endpoint == "recipe":
+        # Recipe returns search-like dict {file: [matches]} or list of recipes
+        if isinstance(data, dict):
+            if "recipes" in data:
+                # List of available recipes
+                return f"{BOLD}Available recipes:{RESET}\n  " + ", ".join(data["recipes"])
+            else:
+                # Search results
+                output = []
+                for file, matches in data.items():
+                    display_file = file
+                    if "/src/" in file:
+                        display_file = file.split("/src/")[-1]
+                    elif "/vendor/" in file:
+                        display_file = "vendor/" + file.split("/vendor/")[-1]
+                    output.append(f"{DIM}{display_file}{RESET}")
+                    for match in matches:
+                        output.append(f"  {match.strip()}")
+                return "\n".join(output) if output else f"{YELLOW}No results{RESET}"
+        return json.dumps(data, indent=2)
 
     # Default: JSON
     return json.dumps(data, indent=2)
@@ -305,6 +353,10 @@ def main():
     mem_search = memory_sub.add_parser("search", help="Search memories")
     mem_search.add_argument("pattern", help="Search pattern")
     mem_search.add_argument("--folder", "-f", help="Folder filter")
+
+    # recipe
+    recipe_p = subparsers.add_parser("recipe", help="Run pre-built recipes")
+    recipe_p.add_argument("name", nargs="?", default="list", help="Recipe name (entities, controllers, services, interfaces, tests)")
 
     # daemon
     daemon_p = subparsers.add_parser("daemon", help="Daemon control")
@@ -437,6 +489,9 @@ def main():
             params = {"pattern": args.pattern}
             if args.folder:
                 params["folder"] = args.folder
+
+    elif args.command == "recipe":
+        params = {"name": args.name}
 
     # Make request
     method = "POST" if args.command in ("memory",) and args.action in ("write",) else "GET"
