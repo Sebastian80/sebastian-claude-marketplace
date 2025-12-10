@@ -7,9 +7,12 @@ Plugins are auto-discovered and provide their own endpoints.
 
 __version__ = "1.0.0"
 
-# Configuration
-DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 9100
-IDLE_TIMEOUT = 1800  # 30 minutes
-PID_FILE = "/tmp/skills-daemon.pid"
-LOG_FILE = "/tmp/skills-daemon.log"
+# Import config for convenient access
+from .config import config, DaemonConfig
+
+# Re-export commonly used values for backward compatibility
+DEFAULT_HOST = config.host
+DEFAULT_PORT = config.port
+IDLE_TIMEOUT = config.idle_timeout
+PID_FILE = str(config.pid_file)
+LOG_FILE = str(config.log_file)
