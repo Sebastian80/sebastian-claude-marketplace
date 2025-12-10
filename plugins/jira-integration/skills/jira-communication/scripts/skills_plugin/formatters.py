@@ -11,7 +11,7 @@ These extend the base formatters with Jira-aware formatting for:
 
 import sys
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 # Import base formatters from daemon
 SKILLS_DAEMON = Path(__file__).parent.parent.parent.parent.parent.parent / "skills-daemon"
@@ -20,8 +20,9 @@ if str(SKILLS_DAEMON) not in sys.path:
 
 from skills_daemon.formatters import (
     BaseFormatter, HumanFormatter, JsonFormatter, AIFormatter, MarkdownFormatter,
-    registry
+    formatter_registry
 )
+from skills_daemon.colors import red, green, yellow, cyan, dim, bold
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -39,19 +40,19 @@ class JiraIssueHumanFormatter(HumanFormatter):
     def _format_issue(self, issue: dict) -> str:
         f = issue.get("fields", {})
         lines = [
-            f"{self.BOLD}Key:{self.RESET} {self.CYAN}{issue.get('key', '?')}{self.RESET}",
-            f"{self.BOLD}Type:{self.RESET} {f.get('issuetype', {}).get('name', '?')} | "
-            f"{self.BOLD}Status:{self.RESET} {f.get('status', {}).get('name', '?')} | "
-            f"{self.BOLD}Priority:{self.RESET} {f.get('priority', {}).get('name', '?')}",
-            f"{self.BOLD}Summary:{self.RESET} {f.get('summary', '?')}",
+            f"{bold('Key:')} {cyan(issue.get('key', '?'))}",
+            f"{bold('Type:')} {f.get('issuetype', {}).get('name', '?')} | "
+            f"{bold('Status:')} {f.get('status', {}).get('name', '?')} | "
+            f"{bold('Priority:')} {f.get('priority', {}).get('name', '?')}",
+            f"{bold('Summary:')} {f.get('summary', '?')}",
         ]
         if f.get("assignee"):
-            lines.append(f"{self.BOLD}Assignee:{self.RESET} {f['assignee'].get('displayName', '?')}")
+            lines.append(f"{bold('Assignee:')} {f['assignee'].get('displayName', '?')}")
         if f.get("description"):
             desc = f["description"][:400]
             if len(f["description"]) > 400:
                 desc += "..."
-            lines.append(f"{self.BOLD}Description:{self.RESET}\n{desc}")
+            lines.append(f"{bold('Description:')}\n{desc}")
         return "\n".join(lines)
 
 
@@ -119,14 +120,14 @@ class JiraSearchHumanFormatter(HumanFormatter):
 
     def _format_search(self, issues: list) -> str:
         if not issues:
-            return f"{self.YELLOW}No issues found{self.RESET}"
+            return yellow("No issues found")
         lines = []
         for i in issues:
             f = i.get("fields", {})
             key = i.get("key", "?")
             status = f.get("status", {}).get("name", "?")
             summary = f.get("summary", "?")[:50]
-            lines.append(f"{self.CYAN}{key:15}{self.RESET} {status:15} {summary}")
+            lines.append(f"{cyan(f'{key:15}')} {status:15} {summary}")
         return "\n".join(lines)
 
 
@@ -190,10 +191,10 @@ class JiraTransitionsHumanFormatter(HumanFormatter):
 
     def _format_transitions(self, transitions: list) -> str:
         if not transitions:
-            return f"{self.YELLOW}No transitions available{self.RESET}"
+            return yellow("No transitions available")
         lines = []
         for t in transitions:
-            lines.append(f"  {t.get('id'):5} {t.get('name'):25} {self.DIM}→{self.RESET} {t.get('to', '?')}")
+            lines.append(f"  {t.get('id'):5} {t.get('name'):25} {dim('→')} {t.get('to', '?')}")
         return "\n".join(lines)
 
 
@@ -228,13 +229,13 @@ class JiraCommentsHumanFormatter(HumanFormatter):
 
     def _format_comments(self, comments: list) -> str:
         if not comments:
-            return f"{self.YELLOW}No comments{self.RESET}"
+            return yellow("No comments")
         lines = []
         for c in comments:
             author = c.get("author", {}).get("displayName", "?")
             created = c.get("created", "?")[:10]
             body = c.get("body", "")[:120].replace("\n", " ")
-            lines.append(f"{self.DIM}{created}{self.RESET} {self.CYAN}{author}{self.RESET}: {body}")
+            lines.append(f"{dim(created)} {cyan(author)}: {body}")
         return "\n".join(lines)
 
 
@@ -262,24 +263,27 @@ class JiraCommentsAIFormatter(AIFormatter):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def register_jira_formatters():
-    """Register all Jira formatters with the daemon."""
+    """Register all Jira formatters with the daemon.
+
+    Uses 4-arg API: formatter_registry.register(plugin, data_type, format, FormatterClass)
+    """
     # Issues
-    registry.register("jira", "issue:human", JiraIssueHumanFormatter)
-    registry.register("jira", "issue:ai", JiraIssueAIFormatter)
-    registry.register("jira", "issue:markdown", JiraIssueMarkdownFormatter)
+    formatter_registry.register("jira", "issue", "human", JiraIssueHumanFormatter)
+    formatter_registry.register("jira", "issue", "ai", JiraIssueAIFormatter)
+    formatter_registry.register("jira", "issue", "markdown", JiraIssueMarkdownFormatter)
 
     # Search
-    registry.register("jira", "search:human", JiraSearchHumanFormatter)
-    registry.register("jira", "search:ai", JiraSearchAIFormatter)
-    registry.register("jira", "search:markdown", JiraSearchMarkdownFormatter)
+    formatter_registry.register("jira", "search", "human", JiraSearchHumanFormatter)
+    formatter_registry.register("jira", "search", "ai", JiraSearchAIFormatter)
+    formatter_registry.register("jira", "search", "markdown", JiraSearchMarkdownFormatter)
 
     # Transitions
-    registry.register("jira", "transitions:human", JiraTransitionsHumanFormatter)
-    registry.register("jira", "transitions:ai", JiraTransitionsAIFormatter)
+    formatter_registry.register("jira", "transitions", "human", JiraTransitionsHumanFormatter)
+    formatter_registry.register("jira", "transitions", "ai", JiraTransitionsAIFormatter)
 
     # Comments
-    registry.register("jira", "comments:human", JiraCommentsHumanFormatter)
-    registry.register("jira", "comments:ai", JiraCommentsAIFormatter)
+    formatter_registry.register("jira", "comments", "human", JiraCommentsHumanFormatter)
+    formatter_registry.register("jira", "comments", "ai", JiraCommentsAIFormatter)
 
 
 # Auto-register on import

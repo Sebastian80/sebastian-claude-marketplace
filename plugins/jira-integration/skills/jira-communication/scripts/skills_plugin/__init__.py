@@ -10,12 +10,13 @@ Features:
 - Multiple output formats (human, json, ai, markdown)
 """
 
+import asyncio
 import sys
 import time
 import logging
 from functools import wraps
 from pathlib import Path
-from typing import Any, Optional, Callable
+from typing import Any, Callable
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse, PlainTextResponse
@@ -165,7 +166,7 @@ def success_response(data: Any) -> dict:
     return {"success": True, "data": data}
 
 
-def error_response(message: str, hint: Optional[str] = None, status: int = 400) -> JSONResponse:
+def error_response(message: str, hint: str | None = None, status: int = 400) -> JSONResponse:
     """Standard error response."""
     content = {"success": False, "error": message}
     if hint:
@@ -173,7 +174,7 @@ def error_response(message: str, hint: Optional[str] = None, status: int = 400) 
     return JSONResponse(status_code=status, content=content)
 
 
-def formatted_response(data: Any, fmt: str, data_type: str = None):
+def formatted_response(data: Any, fmt: str, data_type: str | None = None):
     """Return response in requested format.
 
     Args:
@@ -185,11 +186,11 @@ def formatted_response(data: Any, fmt: str, data_type: str = None):
         return success_response(data)
 
     # Use plugin formatter if available, else base formatter
-    formatted = format_response(data, fmt, plugin="jira", data_type=f"{data_type}:{fmt}" if data_type else None)
+    formatted = format_response(data, fmt, plugin="jira", data_type=data_type)
     return PlainTextResponse(content=formatted)
 
 
-def formatted_error(message: str, hint: Optional[str] = None, fmt: str = "json", status: int = 400):
+def formatted_error(message: str, hint: str | None = None, fmt: str = "json", status: int = 400):
     """Return error in requested format."""
     if fmt == "json":
         return error_response(message, hint, status)
@@ -225,8 +226,8 @@ class JiraPlugin(SkillPlugin):
         @router.get("/issue/{key}")
         async def get_issue(
             key: str,
-            fields: Optional[str] = Query(None, description="Comma-separated fields"),
-            expand: Optional[str] = Query(None, description="Fields to expand"),
+            fields: str | None = Query(None, description="Comma-separated fields"),
+            expand: str | None = Query(None, description="Fields to expand"),
             format: str = Query("json", description="Output format: json, human, ai, markdown"),
         ):
             """Get issue details."""
@@ -248,10 +249,10 @@ class JiraPlugin(SkillPlugin):
         @router.patch("/issue/{key}")
         async def update_issue(
             key: str,
-            summary: Optional[str] = Query(None),
-            priority: Optional[str] = Query(None),
-            labels: Optional[str] = Query(None, description="Comma-separated labels"),
-            assignee: Optional[str] = Query(None),
+            summary: str | None = Query(None),
+            priority: str | None = Query(None),
+            labels: str | None = Query(None, description="Comma-separated labels"),
+            assignee: str | None = Query(None),
         ):
             """Update issue fields."""
             client = await get_client()
@@ -389,10 +390,10 @@ class JiraPlugin(SkillPlugin):
             project: str,
             summary: str,
             issue_type: str = Query(..., alias="type"),
-            description: Optional[str] = Query(None),
-            priority: Optional[str] = Query(None),
-            labels: Optional[str] = Query(None),
-            assignee: Optional[str] = Query(None),
+            description: str | None = Query(None),
+            priority: str | None = Query(None),
+            labels: str | None = Query(None),
+            assignee: str | None = Query(None),
         ):
             """Create new issue."""
             client = await get_client()
@@ -461,7 +462,7 @@ class JiraPlugin(SkillPlugin):
         async def add_weblink(
             key: str,
             url: str,
-            title: Optional[str] = Query(None),
+            title: str | None = Query(None),
         ):
             """Add web link (remote link) to issue."""
             client = await get_client()
@@ -574,12 +575,59 @@ class JiraPlugin(SkillPlugin):
         try:
             from lib.workflow import WorkflowStore
             workflow_store = WorkflowStore()
-        except Exception:
-            pass  # Will be initialized lazily if needed
+            logger.info("Jira: workflow store initialized")
+        except Exception as e:
+            logger.debug(f"Jira: workflow store init deferred: {e}")
+
+    async def connect(self) -> None:
+        """Establish Jira connection on daemon startup.
+
+        Called automatically by daemon after startup().
+        Connection failures are logged but don't prevent daemon from running.
+        """
+        global jira_client, last_health_check
+        try:
+            # Force fresh connection
+            jira_client = None
+            get_client_sync()
+            logger.info("Jira: connected to server")
+        except Exception as e:
+            logger.warning(f"Jira: connection failed (will retry on first request): {e}")
+            raise  # Let daemon know connection failed
+
+    async def reconnect(self) -> None:
+        """Re-establish connection with exponential backoff.
+
+        Called by daemon or health checks when connection is lost.
+        """
+        global jira_client
+
+        # Reset existing connection
+        jira_client = None
+
+        # Exponential backoff: 0.5s, 1s, 2s
+        delays = [0.5, 1.0, 2.0]
+        last_error = None
+
+        for attempt, delay in enumerate(delays, 1):
+            try:
+                await asyncio.sleep(delay)
+                await self.connect()
+                logger.info(f"Jira: reconnected after {attempt} attempts")
+                return
+            except Exception as e:
+                last_error = e
+                logger.warning(f"Jira: reconnect attempt {attempt}/{len(delays)} failed: {e}")
+
+        # All retries failed
+        logger.error(f"Jira: reconnection failed after {len(delays)} attempts: {last_error}")
+        raise last_error if last_error else RuntimeError("Reconnection failed")
 
     async def shutdown(self) -> None:
         """Cleanup on shutdown."""
         global jira_client
+        if jira_client:
+            logger.info("Jira: closing connection")
         jira_client = None
 
     def health_check(self) -> dict[str, Any]:
