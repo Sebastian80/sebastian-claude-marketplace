@@ -85,8 +85,14 @@ class DaemonLogger:
     """
 
     def __init__(self, name: str = "skills-daemon"):
+        from . import config
+
         self.logger = logging.getLogger(name)
-        self.logger.setLevel(logging.INFO)
+
+        # Use log level from config/environment
+        log_level = getattr(logging, config.log_level.upper(), logging.INFO)
+        self.logger.setLevel(log_level)
+
         self._queue_listener = None
 
         # Console handler (human-readable, direct)
