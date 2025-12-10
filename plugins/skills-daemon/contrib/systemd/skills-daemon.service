@@ -1,0 +1,44 @@
+# Skills Daemon systemd user service
+#
+# Installation:
+#   mkdir -p ~/.config/systemd/user/
+#   cp skills-daemon.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable skills-daemon
+#   systemctl --user start skills-daemon
+#
+# Check status:
+#   systemctl --user status skills-daemon
+#   journalctl --user -u skills-daemon -f
+#
+# Note: Requires lingering to run without active session:
+#   loginctl enable-linger $USER
+
+[Unit]
+Description=Skills Daemon for Claude Code
+Documentation=https://github.com/anthropics/claude-code
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/.claude/plugins/marketplaces/sebastian-marketplace/plugins/skills-daemon/.venv/bin/python -m skills_daemon.main
+WorkingDirectory=%h/.claude/plugins/marketplaces/sebastian-marketplace/plugins/skills-daemon
+Environment=PYTHONPATH=%h/.claude/plugins/marketplaces/sebastian-marketplace/plugins/skills-daemon
+
+# Restart configuration
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+# Resource limits
+MemoryMax=256M
+CPUQuota=50%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=skills-daemon
+
+[Install]
+WantedBy=default.target
