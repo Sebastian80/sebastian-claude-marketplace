@@ -41,6 +41,7 @@ class DaemonConfig:
     host: str = _get_env("HOST", "127.0.0.1")
     port: int = _get_env_int("PORT", 9100)
     idle_timeout: int = _get_env_int("TIMEOUT", 1800)
+    shutdown_timeout: int = _get_env_int("SHUTDOWN_TIMEOUT", 10)
     log_level: str = _get_env("LOG_LEVEL", "INFO")
     log_file: Path = _get_env_path("LOG_FILE", "/tmp/skills-daemon.log")
     pid_file: Path = _get_env_path("PID_FILE", "/tmp/skills-daemon.pid")

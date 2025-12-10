@@ -11,6 +11,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from . import __version__, DEFAULT_HOST, DEFAULT_PORT
+from .config import config
 from .lifecycle import LifecycleManager
 from .logging import logger, set_request_id, generate_request_id, request_id_ctx
 from .plugins import registry
@@ -58,13 +59,24 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
 
-        # Shutdown plugins
-        for plugin in registry.all():
-            try:
-                await plugin.shutdown()
-                logger.info(f"Plugin stopped: {plugin.name}")
-            except Exception as e:
-                logger.error(f"Plugin {plugin.name} failed to stop: {e}")
+        # Shutdown plugins with timeout protection
+        async def _shutdown_plugins():
+            for plugin in registry.all():
+                try:
+                    await plugin.shutdown()
+                    logger.info(f"Plugin stopped: {plugin.name}")
+                except Exception as e:
+                    logger.error(f"Plugin {plugin.name} failed to stop: {e}")
+
+        try:
+            await asyncio.wait_for(
+                _shutdown_plugins(),
+                timeout=config.shutdown_timeout
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                f"Plugin shutdown timed out after {config.shutdown_timeout}s"
+            )
 
         # Run shutdown callbacks
         await lifecycle.run_shutdown_callbacks()

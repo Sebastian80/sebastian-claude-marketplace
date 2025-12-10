@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from . import PID_FILE, IDLE_TIMEOUT
+from .config import config
 from .logging import logger
 
 
@@ -66,16 +67,31 @@ class LifecycleManager:
         """Register a shutdown callback."""
         self._shutdown_callbacks.append(callback)
 
-    async def run_shutdown_callbacks(self) -> None:
-        """Run all registered shutdown callbacks."""
-        for callback in self._shutdown_callbacks:
-            try:
-                if asyncio.iscoroutinefunction(callback):
-                    await callback()
-                else:
-                    callback()
-            except Exception as e:
-                logger.error(f"Shutdown callback failed: {e}")
+    async def run_shutdown_callbacks(self, timeout: float | None = None) -> None:
+        """Run all registered shutdown callbacks with timeout protection.
+
+        Args:
+            timeout: Maximum time to wait for all callbacks (default: config.shutdown_timeout)
+        """
+        if timeout is None:
+            timeout = config.shutdown_timeout
+
+        async def _run_callbacks():
+            for callback in self._shutdown_callbacks:
+                try:
+                    if asyncio.iscoroutinefunction(callback):
+                        await callback()
+                    else:
+                        callback()
+                except Exception as e:
+                    logger.error(f"Shutdown callback failed: {e}")
+
+        try:
+            await asyncio.wait_for(_run_callbacks(), timeout=timeout)
+        except asyncio.TimeoutError:
+            logger.warning(
+                f"Shutdown callbacks timed out after {timeout}s, forcing shutdown"
+            )
 
     async def idle_timeout_checker(self) -> None:
         """Background task to check for idle timeout."""
