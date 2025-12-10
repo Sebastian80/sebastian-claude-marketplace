@@ -15,6 +15,8 @@ from abc import ABC, abstractmethod
 from typing import Any, Optional, Dict, Type, Callable
 from functools import wraps
 
+from .colors import red, green, yellow, cyan, dim, bold, colored
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Format Registry
@@ -72,15 +74,6 @@ class BaseFormatter(ABC):
 class HumanFormatter(BaseFormatter):
     """Terminal-friendly output with ANSI colors."""
 
-    # ANSI codes
-    RED = "\033[31m"
-    GREEN = "\033[32m"
-    YELLOW = "\033[33m"
-    CYAN = "\033[36m"
-    DIM = "\033[2m"
-    BOLD = "\033[1m"
-    RESET = "\033[0m"
-
     def format(self, data: Any) -> str:
         if isinstance(data, dict):
             return self._format_dict(data)
@@ -92,16 +85,16 @@ class HumanFormatter(BaseFormatter):
         lines = []
         for k, v in d.items():
             if isinstance(v, dict):
-                lines.append(f"{self.BOLD}{k}:{self.RESET}")
+                lines.append(f"{bold(k + ':')}")
                 for k2, v2 in v.items():
                     lines.append(f"  {k2}: {v2}")
             else:
-                lines.append(f"{self.BOLD}{k}:{self.RESET} {v}")
+                lines.append(f"{bold(k + ':')} {v}")
         return "\n".join(lines)
 
     def _format_list(self, items: list) -> str:
         if not items:
-            return f"{self.YELLOW}No results{self.RESET}"
+            return yellow("No results")
         lines = []
         for item in items:
             if isinstance(item, dict):
@@ -109,7 +102,7 @@ class HumanFormatter(BaseFormatter):
                 id_val = item.get("id", item.get("name", ""))
                 label = item.get("title", item.get("label", item.get("name", "")))
                 if id_val and label and id_val != label:
-                    lines.append(f"{self.CYAN}{id_val}{self.RESET}: {label}")
+                    lines.append(f"{cyan(id_val)}: {label}")
                 elif id_val:
                     lines.append(f"• {id_val}")
                 elif label:
@@ -121,13 +114,13 @@ class HumanFormatter(BaseFormatter):
         return "\n".join(lines)
 
     def format_error(self, error: str, hint: Optional[str] = None) -> str:
-        out = f"{self.RED}Error:{self.RESET} {error}"
+        out = f"{red('Error:')} {error}"
         if hint:
-            out += f"\n{self.DIM}Hint: {hint}{self.RESET}"
+            out += f"\n{dim(f'Hint: {hint}')}"
         return out
 
     def format_success(self, message: str, data: Optional[dict] = None) -> str:
-        return f"{self.GREEN}✓{self.RESET} {message}"
+        return f"{green('✓')} {message}"
 
 
 class JsonFormatter(BaseFormatter):
