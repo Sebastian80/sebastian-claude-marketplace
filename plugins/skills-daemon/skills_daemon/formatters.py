@@ -1,51 +1,43 @@
 """
 Centralized response formatters for skills-daemon.
 
-Plugins can register custom formatters for their data types.
-The daemon handles format selection via query param: ?format=human|json|ai|markdown
+Provides extensible formatting system where plugins can:
+- Register custom formatters for specific data types
+- Extend base formatters with custom styling (colors, icons)
+- Override standard formatters for their data types
 
-Architecture:
-- Base formatters here (error, success, generic)
-- Plugins register type-specific formatters via registry
-- CLI requests format via Accept header or query param
+Usage in plugins:
+
+    from skills_daemon.formatters import (
+        FormatterRegistry, HumanFormatter, formatter_registry
+    )
+
+    class MyIssueFormatter(HumanFormatter):
+        # Custom icons
+        ICONS = {**HumanFormatter.ICONS, "bug": "🐛", "feature": "✨"}
+
+        def format(self, data):
+            if isinstance(data, list):
+                return self.format_issues(data)
+            return super().format(data)
+
+        def format_issues(self, issues):
+            lines = []
+            for issue in issues:
+                icon = self.ICONS.get(issue.get("type"), "•")
+                key = self.colorize(issue["key"], "cyan")
+                lines.append(f"{icon} {key}: {issue['summary']}")
+            return "\\n".join(lines)
+
+    # Register for plugin
+    formatter_registry.register("jira", "issues", "human", MyIssueFormatter)
 """
 
 import json
 from abc import ABC, abstractmethod
-from typing import Any, Optional, Dict, Type, Callable
-from functools import wraps
+from typing import Any
 
 from .colors import red, green, yellow, cyan, dim, bold, colored
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Format Registry
-# ═══════════════════════════════════════════════════════════════════════════════
-
-class FormatterRegistry:
-    """Registry for plugin-specific formatters."""
-
-    def __init__(self):
-        self._formatters: Dict[str, Dict[str, Type["BaseFormatter"]]] = {}
-        # plugin_name -> {data_type -> formatter_class}
-
-    def register(self, plugin: str, data_type: str, formatter_class: Type["BaseFormatter"]):
-        """Register a formatter for a plugin's data type."""
-        if plugin not in self._formatters:
-            self._formatters[plugin] = {}
-        self._formatters[plugin][data_type] = formatter_class
-
-    def get(self, plugin: str, data_type: str) -> Optional[Type["BaseFormatter"]]:
-        """Get formatter for plugin's data type."""
-        return self._formatters.get(plugin, {}).get(data_type)
-
-    def list_types(self, plugin: str) -> list:
-        """List registered data types for a plugin."""
-        return list(self._formatters.get(plugin, {}).keys())
-
-
-# Global registry
-registry = FormatterRegistry()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -55,37 +47,46 @@ registry = FormatterRegistry()
 class BaseFormatter(ABC):
     """Abstract base for all formatters."""
 
+    # Override these in subclasses for custom styling
+    ICONS = {
+        "success": "✓",
+        "error": "✗",
+        "warning": "⚠",
+        "info": "ℹ",
+        "bullet": "•",
+        "arrow": "→",
+    }
+
     @abstractmethod
     def format(self, data: Any) -> str:
         """Format data to string."""
         pass
 
     @abstractmethod
-    def format_error(self, error: str, hint: Optional[str] = None) -> str:
+    def format_error(self, error: str, hint: str | None = None) -> str:
         """Format error message."""
         pass
 
     @abstractmethod
-    def format_success(self, message: str, data: Optional[dict] = None) -> str:
+    def format_success(self, message: str, data: dict | None = None) -> str:
         """Format success message."""
         pass
 
+    def icon(self, name: str, fallback: str = "•") -> str:
+        """Get icon by name."""
+        return self.ICONS.get(name, fallback)
+
+    def colorize(self, text: str, color: str) -> str:
+        """Apply color to text."""
+        return colored(text, color)
+
 
 class HumanFormatter(BaseFormatter):
-    """Terminal-friendly output with ANSI colors.
+    """Terminal-friendly output with ANSI colors and icons.
 
-    Provides color constants as class attributes for subclasses:
-    RED, GREEN, YELLOW, CYAN, DIM, BOLD, RESET
+    Subclass this for plugin-specific human-readable formatting.
+    Override ICONS dict for custom icons.
     """
-
-    # ANSI color codes (always enabled - CLI handles TTY detection)
-    RED = "\033[31m"
-    GREEN = "\033[32m"
-    YELLOW = "\033[33m"
-    CYAN = "\033[36m"
-    DIM = "\033[2m"
-    BOLD = "\033[1m"
-    RESET = "\033[0m"
 
     def format(self, data: Any) -> str:
         if isinstance(data, dict):
@@ -94,46 +95,51 @@ class HumanFormatter(BaseFormatter):
             return self._format_list(data)
         return str(data)
 
-    def _format_dict(self, d: dict) -> str:
+    def _format_dict(self, d: dict, indent: int = 0) -> str:
         lines = []
+        prefix = "  " * indent
+
         for k, v in d.items():
+            key_str = bold(f"{k}:")
             if isinstance(v, dict):
-                lines.append(f"{bold(k + ':')}")
-                for k2, v2 in v.items():
-                    lines.append(f"  {k2}: {v2}")
+                lines.append(f"{prefix}{key_str}")
+                lines.append(self._format_dict(v, indent + 1))
+            elif isinstance(v, list) and v and isinstance(v[0], dict):
+                lines.append(f"{prefix}{key_str} [{len(v)} items]")
             else:
-                lines.append(f"{bold(k + ':')} {v}")
+                lines.append(f"{prefix}{key_str} {v}")
         return "\n".join(lines)
 
     def _format_list(self, items: list) -> str:
         if not items:
             return yellow("No results")
+
         lines = []
         for item in items:
             if isinstance(item, dict):
-                # Generic - no domain-specific assumptions
-                id_val = item.get("id", item.get("name", ""))
-                label = item.get("title", item.get("label", item.get("name", "")))
-                if id_val and label and id_val != label:
-                    lines.append(f"{cyan(id_val)}: {label}")
+                id_val = item.get("id") or item.get("key") or item.get("name")
+                label = item.get("title") or item.get("summary") or item.get("label") or item.get("description", "")
+
+                if id_val and label and str(id_val) != str(label):
+                    lines.append(f"{self.icon('bullet')} {cyan(str(id_val))}: {label}")
                 elif id_val:
-                    lines.append(f"• {id_val}")
+                    lines.append(f"{self.icon('bullet')} {id_val}")
                 elif label:
-                    lines.append(f"• {label}")
+                    lines.append(f"{self.icon('bullet')} {label}")
                 else:
-                    lines.append(str(item))
+                    lines.append(f"{self.icon('bullet')} {item}")
             else:
-                lines.append(str(item))
+                lines.append(f"{self.icon('bullet')} {item}")
         return "\n".join(lines)
 
-    def format_error(self, error: str, hint: Optional[str] = None) -> str:
-        out = f"{red('Error:')} {error}"
+    def format_error(self, error: str, hint: str | None = None) -> str:
+        out = f"{red(self.icon('error'))} {red('Error:')} {error}"
         if hint:
             out += f"\n{dim(f'Hint: {hint}')}"
         return out
 
-    def format_success(self, message: str, data: Optional[dict] = None) -> str:
-        return f"{green('✓')} {message}"
+    def format_success(self, message: str, data: dict | None = None) -> str:
+        return f"{green(self.icon('success'))} {message}"
 
 
 class JsonFormatter(BaseFormatter):
@@ -142,15 +148,15 @@ class JsonFormatter(BaseFormatter):
     def format(self, data: Any) -> str:
         return json.dumps(data, indent=2, ensure_ascii=False, default=str)
 
-    def format_error(self, error: str, hint: Optional[str] = None) -> str:
-        return json.dumps({"error": error, "hint": hint}, indent=2)
+    def format_error(self, error: str, hint: str | None = None) -> str:
+        return json.dumps({"success": False, "error": error, "hint": hint}, indent=2)
 
-    def format_success(self, message: str, data: Optional[dict] = None) -> str:
+    def format_success(self, message: str, data: dict | None = None) -> str:
         return json.dumps({"success": True, "message": message, **(data or {})}, indent=2)
 
 
 class AIFormatter(BaseFormatter):
-    """Optimized for LLM consumption - concise, structured, no decoration."""
+    """Optimized for LLM consumption - concise, no decoration."""
 
     def format(self, data: Any) -> str:
         if isinstance(data, dict):
@@ -174,27 +180,27 @@ class AIFormatter(BaseFormatter):
     def _format_list(self, items: list) -> str:
         if not items:
             return "NO_RESULTS"
+
         lines = [f"RESULTS: {len(items)} items"]
-        for item in items[:20]:  # Limit for LLM context
+        for item in items[:20]:
             if isinstance(item, dict):
-                # Generic key detection - no domain-specific assumptions
-                key = item.get("id", item.get("name", "?"))
-                # Generic label detection
-                label = item.get("title", item.get("label", item.get("name", "")))[:60]
-                if label and label != key:
+                key = item.get("id") or item.get("key") or item.get("name") or "?"
+                label = (item.get("title") or item.get("summary") or item.get("label") or "")[:60]
+                if label and str(label) != str(key):
                     lines.append(f"- {key}: {label}")
                 else:
                     lines.append(f"- {key}")
             else:
                 lines.append(f"- {item}")
+
         if len(items) > 20:
             lines.append(f"... and {len(items) - 20} more")
         return "\n".join(lines)
 
-    def format_error(self, error: str, hint: Optional[str] = None) -> str:
+    def format_error(self, error: str, hint: str | None = None) -> str:
         return f"ERROR: {error}" + (f" (hint: {hint})" if hint else "")
 
-    def format_success(self, message: str, data: Optional[dict] = None) -> str:
+    def format_success(self, message: str, data: dict | None = None) -> str:
         return f"OK: {message}"
 
 
@@ -212,35 +218,110 @@ class MarkdownFormatter(BaseFormatter):
         lines = ["| Field | Value |", "|-------|-------|"]
         for k, v in d.items():
             if not isinstance(v, (dict, list)):
-                lines.append(f"| {k} | {v} |")
+                v_str = str(v).replace("|", "\\|")
+                lines.append(f"| {k} | {v_str} |")
         return "\n".join(lines)
 
     def _format_list(self, items: list) -> str:
         if not items:
             return "*No results*"
 
-        # Try to auto-detect columns from first item
         if items and isinstance(items[0], dict):
-            keys = list(items[0].keys())[:5]  # Max 5 columns
+            keys = list(items[0].keys())[:5]
             header = "| " + " | ".join(keys) + " |"
             sep = "|" + "|".join(["---"] * len(keys)) + "|"
             lines = [header, sep]
-            for item in items[:50]:  # Limit rows
-                row = "| " + " | ".join(str(item.get(k, ""))[:30] for k in keys) + " |"
-                lines.append(row)
+
+            for item in items[:50]:
+                values = [str(item.get(k, ""))[:30].replace("|", "\\|") for k in keys]
+                lines.append("| " + " | ".join(values) + " |")
             return "\n".join(lines)
 
         return "\n".join(f"- {item}" for item in items)
 
-    def format_error(self, error: str, hint: Optional[str] = None) -> str:
+    def format_error(self, error: str, hint: str | None = None) -> str:
         return f"**Error:** {error}" + (f"\n\n> Hint: {hint}" if hint else "")
 
-    def format_success(self, message: str, data: Optional[dict] = None) -> str:
+    def format_success(self, message: str, data: dict | None = None) -> str:
         return f"✓ **{message}**"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Formatter Factory
+# Formatter Registry
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class FormatterRegistry:
+    """Registry for plugin-specific formatters.
+
+    Key format: "{plugin}:{data_type}:{format}"
+    Example: "jira:issues:human"
+
+    Usage:
+        formatter_registry.register("jira", "issues", "human", JiraIssueFormatter)
+        formatter = formatter_registry.get("jira", "issues", "human")
+    """
+
+    def __init__(self):
+        self._formatters: dict[str, type[BaseFormatter]] = {}
+
+    def register(
+        self,
+        plugin: str,
+        data_type: str,
+        format_name: str,
+        formatter_class: type[BaseFormatter],
+    ) -> None:
+        """Register a formatter for plugin/data_type/format."""
+        key = f"{plugin}:{data_type}:{format_name}"
+        self._formatters[key] = formatter_class
+
+    def unregister(self, plugin: str, data_type: str, format_name: str) -> bool:
+        """Unregister a formatter. Returns True if removed."""
+        key = f"{plugin}:{data_type}:{format_name}"
+        if key in self._formatters:
+            del self._formatters[key]
+            return True
+        return False
+
+    def get(self, plugin: str, data_type: str, format_name: str = "human") -> BaseFormatter:
+        """Get formatter instance, falls back to base formatter."""
+        # Exact match
+        key = f"{plugin}:{data_type}:{format_name}"
+        if key in self._formatters:
+            return self._formatters[key]()
+
+        # Plugin-wide formatter (any data type)
+        key = f"{plugin}:*:{format_name}"
+        if key in self._formatters:
+            return self._formatters[key]()
+
+        # Base formatter
+        return get_formatter(format_name)
+
+    def list_registered(self, plugin: str = None) -> list[str]:
+        """List registered formatter keys."""
+        if plugin:
+            return [k for k in self._formatters.keys() if k.startswith(f"{plugin}:")]
+        return list(self._formatters.keys())
+
+    def clear(self, plugin: str = None) -> int:
+        """Clear formatters, returns count removed."""
+        if plugin:
+            keys = [k for k in self._formatters.keys() if k.startswith(f"{plugin}:")]
+            for k in keys:
+                del self._formatters[k]
+            return len(keys)
+        count = len(self._formatters)
+        self._formatters.clear()
+        return count
+
+
+# Global registry
+formatter_registry = FormatterRegistry()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Factory Functions
 # ═══════════════════════════════════════════════════════════════════════════════
 
 FORMATTERS = {
@@ -252,34 +333,22 @@ FORMATTERS = {
 
 
 def get_formatter(format_name: str = "human") -> BaseFormatter:
-    """Get formatter instance by name."""
-    formatter_class = FORMATTERS.get(format_name.lower(), HumanFormatter)
-    return formatter_class()
+    """Get base formatter instance by name."""
+    return FORMATTERS.get(format_name.lower(), HumanFormatter)()
 
 
 def get_plugin_formatter(plugin: str, data_type: str, format_name: str = "human") -> BaseFormatter:
-    """Get plugin-specific formatter or fall back to base."""
-    # Check if plugin has custom formatter for this type
-    custom_class = registry.get(plugin, data_type)
-    if custom_class:
-        return custom_class()
-    # Fall back to base formatter
-    return get_formatter(format_name)
+    """Get plugin-specific formatter or base formatter."""
+    return formatter_registry.get(plugin, data_type, format_name)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# Response Helpers
-# ═══════════════════════════════════════════════════════════════════════════════
-
-def format_response(data: Any, format_name: str = "json", plugin: str = None, data_type: str = None) -> str:
-    """Format response data.
-
-    Args:
-        data: The data to format
-        format_name: One of human, json, ai, markdown
-        plugin: Optional plugin name for custom formatters
-        data_type: Optional data type for plugin-specific formatting
-    """
+def format_response(
+    data: Any,
+    format_name: str = "json",
+    plugin: str = None,
+    data_type: str = None
+) -> str:
+    """Format response data with appropriate formatter."""
     if plugin and data_type:
         formatter = get_plugin_formatter(plugin, data_type, format_name)
     else:
@@ -288,10 +357,7 @@ def format_response(data: Any, format_name: str = "json", plugin: str = None, da
     # Handle wrapped responses
     if isinstance(data, dict):
         if data.get("success") is False or "error" in data:
-            return formatter.format_error(
-                data.get("error", "Unknown error"),
-                data.get("hint")
-            )
+            return formatter.format_error(data.get("error", "Unknown error"), data.get("hint"))
         if "data" in data:
             return formatter.format(data["data"])
 

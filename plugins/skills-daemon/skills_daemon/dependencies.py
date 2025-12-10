@@ -7,7 +7,6 @@ Automatically installs plugin dependencies from manifest.json files.
 import json
 import subprocess
 from pathlib import Path
-from typing import Set
 
 from .config import config
 from .logging import logger
@@ -29,7 +28,7 @@ def discover_manifests() -> list[Path]:
     return manifests
 
 
-def collect_dependencies() -> Set[str]:
+def collect_dependencies() -> set[str]:
     """Collect all dependencies from plugin manifests."""
     all_deps = set()
 

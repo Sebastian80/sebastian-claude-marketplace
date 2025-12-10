@@ -25,24 +25,21 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from skills_daemon.colors import get_color_tuple
 from skills_daemon.config import config
-
-# Configuration from centralized config
-DAEMON_URL = config.daemon_url
-DAEMON_PORT = config.port
-PID_FILE = str(config.pid_file)
-LOCK_FILE = str(config.state_dir / "daemon.lock")
-TIMEOUT = 30
+from skills_daemon.lifecycle import read_pid, cleanup_stale_pid
 
 # Retry configuration
 MAX_RETRIES = 3
 RETRY_BACKOFF_BASE = 0.5  # seconds (0.5, 1.0, 2.0)
+TIMEOUT = 30
 
 # ANSI colors
 RED, GREEN, YELLOW, CYAN, DIM, BOLD, RESET = get_color_tuple()
 
 
-def is_port_in_use(port: int = DAEMON_PORT) -> bool:
+def is_port_in_use(port: int = None) -> bool:
     """Check if daemon port is in use by attempting to bind (most reliable)."""
+    if port is None:
+        port = config.port
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         try:
             s.bind(("127.0.0.1", port))
@@ -54,7 +51,7 @@ def is_port_in_use(port: int = DAEMON_PORT) -> bool:
 def is_daemon_healthy() -> bool:
     """Check if daemon is responding to health checks."""
     try:
-        urllib.request.urlopen(f"{DAEMON_URL}/health", timeout=1)
+        urllib.request.urlopen(f"{config.daemon_url}/health", timeout=1)
         return True
     except Exception:
         return False
@@ -69,32 +66,32 @@ def is_daemon_running() -> bool:
         # Port in use but not healthy - might be starting up or zombie
         # Fall through to PID check
     # Fallback: check PID file
+    pid = read_pid()
+    if pid is None:
+        return False
     try:
-        pid = int(Path(PID_FILE).read_text().strip())
         os.kill(pid, 0)
         return True
-    except (FileNotFoundError, ValueError, ProcessLookupError, PermissionError):
+    except (ProcessLookupError, PermissionError):
         return False
 
 
 def cleanup_stale_daemon() -> None:
     """Kill any daemon process that's not responding on the expected port."""
+    pid = read_pid()
+    if pid is None:
+        return
     try:
-        pid = int(Path(PID_FILE).read_text().strip())
-        # Check if process exists but port is not responding
-        try:
-            os.kill(pid, 0)  # Process exists
-            if not is_port_in_use():
-                # Process exists but not listening - kill it
-                print(f"{YELLOW}Cleaning up stale daemon (PID {pid})...{RESET}", file=sys.stderr)
-                os.kill(pid, 9)  # SIGKILL
-                time.sleep(0.2)
-        except ProcessLookupError:
-            pass  # Process doesn't exist
-        # Clean up PID file
-        Path(PID_FILE).unlink(missing_ok=True)
-    except (FileNotFoundError, ValueError):
-        pass
+        os.kill(pid, 0)  # Process exists
+        if not is_port_in_use():
+            # Process exists but not listening - kill it
+            print(f"{YELLOW}Cleaning up stale daemon (PID {pid})...{RESET}", file=sys.stderr)
+            os.kill(pid, 9)  # SIGKILL
+            time.sleep(0.2)
+    except ProcessLookupError:
+        pass  # Process doesn't exist
+    # Clean up PID file
+    cleanup_stale_pid()
 
 
 def start_daemon() -> bool:
@@ -104,7 +101,7 @@ def start_daemon() -> bool:
         return True
 
     # Use lockfile to prevent race condition
-    lock_path = Path(LOCK_FILE)
+    lock_path = config.state_dir / "daemon.lock"
     try:
         lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR)
         try:
@@ -133,7 +130,11 @@ def start_daemon() -> bool:
         print(f"{DIM}Starting skills daemon...{RESET}", file=sys.stderr)
 
         skills_daemon = Path(__file__).parent.parent
-        venv_python = skills_daemon / ".venv" / "bin" / "python"
+        # Use centralized runtime venv (matches daemon_ctl.py)
+        venv_python = config.venv_dir / "bin" / "python"
+        if not venv_python.exists():
+            # Fallback: try local .venv (development mode)
+            venv_python = skills_daemon / ".venv" / "bin" / "python"
         if not venv_python.exists():
             venv_python = Path(sys.executable)
 
@@ -153,7 +154,7 @@ def start_daemon() -> bool:
                 time.sleep(0.1)
                 if is_port_in_use():
                     try:
-                        urllib.request.urlopen(f"{DAEMON_URL}/health", timeout=1)
+                        urllib.request.urlopen(f"{config.daemon_url}/health", timeout=1)
                         return True
                     except Exception:
                         pass
@@ -184,7 +185,7 @@ def request(path: str, params: dict, method: str = "GET") -> dict | str:
     Returns:
         dict for JSON responses, str for plain text responses (format=human/ai/markdown)
     """
-    url = f"{DAEMON_URL}/{path}"
+    url = f"{config.daemon_url}/{path}"
     # Always use query params (FastAPI endpoints expect Query params)
     clean = {k: v for k, v in params.items() if v is not None}
     if clean:

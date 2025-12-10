@@ -108,11 +108,26 @@ Use consistent response format:
 {"success": False, "error": "Description", "hint": "How to fix"}
 ```
 
+### Plugin Lifecycle
+
+```
+__init__()  →  startup()  →  connect()  →  [running]  →  shutdown()
+```
+
+| Method | Purpose | Called |
+|--------|---------|--------|
+| `startup()` | Initialize local resources (caches, configs) | On daemon start |
+| `connect()` | Establish backend connections (APIs, DBs) | After startup() |
+| `reconnect()` | Re-establish failed connections | On connection failure |
+| `shutdown()` | Cleanup all resources | On daemon stop |
+| `health_check()` | Quick status check | On /health requests |
+
 ### Plugin Best Practices
 
-- **Lazy initialization**: Initialize expensive resources in `startup()`, not `__init__()`
-- **Graceful shutdown**: Clean up all resources in `shutdown()`
-- **Health checks**: Return meaningful status in `health_check()`
+- **Separate startup and connect**: Use `startup()` for local init, `connect()` for external connections
+- **Graceful failures**: `connect()` exceptions are logged but don't prevent daemon from running
+- **Implement reconnect()**: For custom reconnection logic (e.g., exponential backoff)
+- **Health checks**: Return meaningful status including connection state
 - **Timeouts**: Use asyncio timeouts for external calls
 - **Errors**: Return structured error responses, don't raise HTTP exceptions
 
@@ -129,8 +144,15 @@ All config uses `SKILLS_DAEMON_` prefix:
 | `SKILLS_DAEMON_TIMEOUT` | `1800` | Idle timeout (seconds) |
 | `SKILLS_DAEMON_SHUTDOWN_TIMEOUT` | `10` | Shutdown timeout (seconds) |
 | `SKILLS_DAEMON_LOG_LEVEL` | `INFO` | Log level (DEBUG/INFO/WARNING/ERROR) |
-| `SKILLS_DAEMON_LOG_FILE` | `/tmp/skills-daemon.log` | Log file path |
-| `SKILLS_DAEMON_PID_FILE` | `/tmp/skills-daemon.pid` | PID file path |
+| `SKILLS_DAEMON_RUNTIME_DIR` | `~/.local/share/skills-daemon` | Runtime directory (logs, state, venv) |
+
+Runtime directory structure:
+```
+~/.local/share/skills-daemon/
+├── logs/daemon.log    # Log file (5MB rotation, 3 backups)
+├── state/daemon.pid   # PID file
+└── venv/              # Virtual environment
+```
 
 ### Accessing Configuration
 
@@ -260,7 +282,7 @@ skills-daemon restart
 skills-daemon logs
 
 # Or directly
-tail -f /tmp/skills-daemon.log | jq .
+tail -f ~/.local/share/skills-daemon/logs/daemon.log | jq .
 ```
 
 ### Check Health
@@ -389,8 +411,8 @@ raise HTTPException(status_code=404, detail="Not found")
 ### Daemon Won't Start
 
 1. Check if port is in use: `ss -tlnp | grep 9100`
-2. Check for stale PID: `cat /tmp/skills-daemon.pid && ps aux | grep skills`
-3. Check logs: `tail /tmp/skills-daemon.log`
+2. Check for stale PID: `cat ~/.local/share/skills-daemon/state/daemon.pid && ps aux | grep skills`
+3. Check logs: `tail ~/.local/share/skills-daemon/logs/daemon.log`
 
 ### Plugin Not Loading
 

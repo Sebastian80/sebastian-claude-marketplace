@@ -18,7 +18,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from . import LOG_FILE
+from .config import config
 
 # Context variable for request correlation
 request_id_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
@@ -85,8 +85,6 @@ class DaemonLogger:
     """
 
     def __init__(self, name: str = "skills-daemon"):
-        from . import config
-
         self.logger = logging.getLogger(name)
 
         # Use log level from config/environment
@@ -105,9 +103,12 @@ class DaemonLogger:
 
         # File handler with rotation + async queue
         try:
+            # Ensure log directory exists
+            config.log_file.parent.mkdir(parents=True, exist_ok=True)
+
             # Create rotating file handler
             file_handler = logging.handlers.RotatingFileHandler(
-                LOG_FILE,
+                str(config.log_file),
                 maxBytes=MAX_BYTES,
                 backupCount=BACKUP_COUNT,
             )

@@ -18,35 +18,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from skills_daemon.colors import get_color_tuple
 from skills_daemon.config import config
-
-DAEMON_URL = config.daemon_url
-PID_FILE = str(config.pid_file)
-LOG_FILE = str(config.log_file)
+from skills_daemon.lifecycle import read_pid, is_daemon_running as is_running
 
 RED, GREEN, YELLOW, _, DIM, BOLD, RESET = get_color_tuple()
 
 
-def read_pid() -> int | None:
-    try:
-        return int(Path(PID_FILE).read_text().strip())
-    except (FileNotFoundError, ValueError):
-        return None
-
-
-def is_running() -> bool:
-    pid = read_pid()
-    if not pid:
-        return False
-    try:
-        os.kill(pid, 0)
-        return True
-    except (OSError, ProcessLookupError):
-        return False
-
-
 def get_health() -> dict | None:
     try:
-        with urllib.request.urlopen(f"{DAEMON_URL}/health", timeout=2) as r:
+        with urllib.request.urlopen(f"{config.daemon_url}/health", timeout=2) as r:
             return json.loads(r.read().decode())
     except Exception:
         return None
@@ -85,7 +64,7 @@ def cmd_start():
             if is_running() and get_health():
                 print(f"{GREEN}Daemon started{RESET}")
                 return 0
-        print(f"{RED}Failed to start{RESET} - check: tail {LOG_FILE}")
+        print(f"{RED}Failed to start{RESET} - check: tail {config.log_file}")
         return 1
     except Exception as e:
         print(f"{RED}Error:{RESET} {e}")
@@ -142,12 +121,12 @@ def cmd_restart():
 
 
 def cmd_logs():
-    if not Path(LOG_FILE).exists():
-        print(f"{YELLOW}No logs at {LOG_FILE}{RESET}")
+    if not config.log_file.exists():
+        print(f"{YELLOW}No logs at {config.log_file}{RESET}")
         return 1
-    print(f"{DIM}Tailing {LOG_FILE} (Ctrl+C to stop){RESET}")
+    print(f"{DIM}Tailing {config.log_file} (Ctrl+C to stop){RESET}")
     try:
-        subprocess.run(["tail", "-f", LOG_FILE])
+        subprocess.run(["tail", "-f", str(config.log_file)])
     except KeyboardInterrupt:
         pass
     return 0
@@ -161,7 +140,7 @@ def cmd_reload():
 
     print(f"{DIM}Reloading plugins...{RESET}")
     try:
-        req = urllib.request.Request(f"{DAEMON_URL}/reload-plugins", method="POST")
+        req = urllib.request.Request(f"{config.daemon_url}/reload-plugins", method="POST")
         with urllib.request.urlopen(req, timeout=10) as r:
             result = json.loads(r.read().decode())
 

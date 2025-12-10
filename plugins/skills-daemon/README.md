@@ -9,7 +9,7 @@ Central FastAPI-based daemon for Claude Code skills. Provides a unified HTTP int
 - **Unified CLI** - Single thin client for all skills with fast startup (~10ms)
 - **Auto-generated API Docs** - Swagger UI at `/docs`, OpenAPI spec at `/openapi.json`
 - **Lifecycle Management** - Auto-start on first use, auto-stop after 30min idle
-- **Structured Logging** - JSON logs to `/tmp/skills-daemon.log`
+- **Structured Logging** - JSON logs to `~/.local/share/skills-daemon/logs/daemon.log`
 - **Output Formatting** - Pluggable formatters (human, json, ai, markdown)
 
 ## Architecture
@@ -112,7 +112,7 @@ Interactive API docs available when daemon is running:
 
 ```
 skills-daemon/
-├── pyproject.toml              # Package definition (fastapi, uvicorn, httpx)
+├── pyproject.toml              # Package definition (fastapi, uvicorn)
 ├── README.md                   # This file
 ├── skills_daemon/
 │   ├── __init__.py             # Constants (port 9100, timeouts)
@@ -190,17 +190,20 @@ class MyPlugin(SkillPlugin):
 Plugins can register custom formatters for their data types:
 
 ```python
-# In skills_plugin/formatters.py
-from skills_daemon.formatters import HumanFormatter, AIFormatter, registry
+# In skills_plugin/__init__.py
+from skills_daemon.formatters import HumanFormatter, formatter_registry
 
-class MyDataHumanFormatter(HumanFormatter):
+class MyDataFormatter(HumanFormatter):
+    # Override icons for your data type
+    ICONS = {**HumanFormatter.ICONS, "item": "→"}
+
     def format(self, data):
-        # Custom formatting logic
-        return formatted_string
+        if isinstance(data, list):
+            return "\n".join(f"{self.icon('item')} {item}" for item in data)
+        return super().format(data)
 
-# Register with daemon
-registry.register("myplugin", "mydata:human", MyDataHumanFormatter)
-registry.register("myplugin", "mydata:ai", MyDataAIFormatter)
+# Register: (plugin, data_type, format_name, FormatterClass)
+formatter_registry.register("myplugin", "items", "human", MyDataFormatter)
 ```
 
 ### Plugin Response Format
@@ -231,13 +234,23 @@ Plugins can support multiple output formats via `?format=` parameter:
 
 ## Configuration
 
-| Setting | Default | Location |
-|---------|---------|----------|
-| Daemon port | 9100 | `skills_daemon/__init__.py` |
-| Idle timeout | 1800s (30min) | `skills_daemon/__init__.py` |
-| PID file | `/tmp/skills-daemon.pid` | `skills_daemon/__init__.py` |
-| Log file | `/tmp/skills-daemon.log` | `skills_daemon/__init__.py` |
-| Log level | INFO | `skills_daemon/logging.py` |
+| Setting | Default | Environment Variable |
+|---------|---------|---------------------|
+| Host | `127.0.0.1` | `SKILLS_DAEMON_HOST` |
+| Port | `9100` | `SKILLS_DAEMON_PORT` |
+| Idle timeout | `1800s` (30min) | `SKILLS_DAEMON_TIMEOUT` |
+| Shutdown timeout | `10s` | `SKILLS_DAEMON_SHUTDOWN_TIMEOUT` |
+| Log level | `INFO` | `SKILLS_DAEMON_LOG_LEVEL` |
+| Runtime dir | `~/.local/share/skills-daemon` | `SKILLS_DAEMON_RUNTIME_DIR` |
+
+### Runtime Directory Structure
+
+```
+~/.local/share/skills-daemon/
+├── logs/daemon.log    # Daemon logs (5MB rotation, 3 backups)
+├── state/daemon.pid   # PID file
+└── venv/              # Virtual environment
+```
 
 ## Troubleshooting
 
@@ -255,10 +268,10 @@ Plugins can support multiple output formats via `?format=` parameter:
 skills-daemon logs
 
 # Or directly
-tail -f /tmp/skills-daemon.log
+tail -f ~/.local/share/skills-daemon/logs/daemon.log
 
 # JSON format for parsing
-cat /tmp/skills-daemon.log | jq .
+cat ~/.local/share/skills-daemon/logs/daemon.log | jq .
 ```
 
 ### Health Check
@@ -288,9 +301,8 @@ curl http://127.0.0.1:9100/plugins
 
 ```toml
 [project.dependencies]
-fastapi>=0.109.0      # Web framework with auto-docs
+fastapi>=0.109.0           # Web framework with auto-docs
 uvicorn[standard]>=0.27.0  # ASGI server
-httpx>=0.26.0         # Async HTTP client
 ```
 
 ## Plugin Documentation

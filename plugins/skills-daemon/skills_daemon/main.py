@@ -51,7 +51,7 @@ def check_venv_valid() -> bool:
     return venv_python.exists()
 
 # Lifecycle manager (initialized on startup)
-lifecycle: LifecycleManager = None
+lifecycle: LifecycleManager | None = None
 
 
 @asynccontextmanager
@@ -79,13 +79,19 @@ async def lifespan(app: FastAPI):
     # Setup signal handlers
     lifecycle.setup_signal_handlers()
 
-    # Start plugins
+    # Start plugins and establish connections
     for plugin in registry.all():
         try:
             await plugin.startup()
             logger.info(f"Plugin started: {plugin.name}")
         except Exception as e:
             logger.error(f"Plugin {plugin.name} failed to start: {e}")
+
+        # Auto-connect (exceptions logged but don't prevent daemon from running)
+        try:
+            await plugin.connect()
+        except Exception as e:
+            logger.warning(f"Plugin {plugin.name}: connection failed: {e}")
 
     # Start idle timeout checker
     timeout_task = asyncio.create_task(lifecycle.idle_timeout_checker())
@@ -256,7 +262,7 @@ async def list_plugins() -> dict[str, Any]:
 
 
 @app.get("/{plugin}/help")
-async def plugin_help(plugin: str, command: str = None) -> dict[str, Any]:
+async def plugin_help(plugin: str, command: str | None = None) -> dict[str, Any]:
     """Generate CLI help from FastAPI metadata.
 
     This endpoint enables self-discovery - Claude can call this

@@ -3,7 +3,7 @@ Plugin interface for skills daemon.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter
 
@@ -43,6 +43,26 @@ class SkillPlugin(ABC):
         """Called on daemon startup. Override to initialize resources."""
         pass
 
+    async def connect(self) -> None:
+        """Called after startup() to establish backend connection.
+
+        Override to:
+        - Connect to external APIs (Jira, Confluence, etc.)
+        - Initialize database connections
+        - Start background workers
+
+        Exceptions are logged but don't prevent daemon from running.
+        """
+        pass
+
+    async def reconnect(self) -> None:
+        """Re-establish connection after failure.
+
+        Default implementation calls connect().
+        Override for custom reconnection logic (e.g., with backoff).
+        """
+        await self.connect()
+
     async def shutdown(self) -> None:
         """Called on daemon shutdown. Override to cleanup resources."""
         pass
@@ -62,7 +82,7 @@ class PluginRegistry:
         """Register a plugin."""
         self._plugins[plugin.name] = plugin
 
-    def unregister(self, name: str) -> Optional[SkillPlugin]:
+    def unregister(self, name: str) -> SkillPlugin | None:
         """Unregister a plugin by name."""
         return self._plugins.pop(name, None)
 
@@ -72,7 +92,7 @@ class PluginRegistry:
         self._plugins.clear()
         return names
 
-    def get(self, name: str) -> Optional[SkillPlugin]:
+    def get(self, name: str) -> SkillPlugin | None:
         """Get plugin by name."""
         return self._plugins.get(name)
 

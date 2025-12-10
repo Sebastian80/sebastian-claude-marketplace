@@ -1,5 +1,8 @@
 """
 Daemon lifecycle management: PID file, signals, idle timeout.
+
+This module is the SINGLE SOURCE OF TRUTH for daemon state functions.
+CLI scripts should import from here instead of redefining.
 """
 
 import asyncio
@@ -8,11 +11,13 @@ import signal
 import sys
 import time
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable
 
-from . import PID_FILE, IDLE_TIMEOUT
 from .config import config
 from .logging import logger
+
+# Use config directly - no re-exports needed
+IDLE_TIMEOUT = config.idle_timeout
 
 
 class LifecycleManager:
@@ -27,15 +32,16 @@ class LifecycleManager:
     def write_pid_file(self) -> None:
         """Write PID to file."""
         try:
-            Path(PID_FILE).write_text(str(os.getpid()))
-            logger.info("PID file written", pid=os.getpid(), path=PID_FILE)
+            config.pid_file.parent.mkdir(parents=True, exist_ok=True)
+            config.pid_file.write_text(str(os.getpid()))
+            logger.info("PID file written", pid=os.getpid(), path=str(config.pid_file))
         except (OSError, PermissionError) as e:
             logger.warning(f"Could not write PID file: {e}")
 
     def remove_pid_file(self) -> None:
         """Remove PID file."""
         try:
-            Path(PID_FILE).unlink(missing_ok=True)
+            config.pid_file.unlink(missing_ok=True)
         except (OSError, PermissionError):
             pass
 
@@ -103,16 +109,29 @@ class LifecycleManager:
                 break
 
 
-def read_pid() -> Optional[int]:
-    """Read PID from file."""
+# ═══════════════════════════════════════════════════════════════════════════════
+# Standalone daemon state functions (SINGLE SOURCE OF TRUTH)
+# Import these in CLI scripts instead of redefining
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def read_pid() -> int | None:
+    """Read PID from file.
+
+    Returns:
+        PID if file exists and is valid, None otherwise.
+    """
     try:
-        return int(Path(PID_FILE).read_text().strip())
+        return int(config.pid_file.read_text().strip())
     except (FileNotFoundError, ValueError):
         return None
 
 
 def is_daemon_running() -> bool:
-    """Check if daemon is running."""
+    """Check if daemon process is running (via PID file).
+
+    Returns:
+        True if process exists, False otherwise.
+    """
     pid = read_pid()
     if pid is None:
         return False
@@ -124,7 +143,13 @@ def is_daemon_running() -> bool:
 
 
 def stop_daemon() -> bool:
-    """Stop the running daemon."""
+    """Stop the running daemon gracefully.
+
+    Sends SIGTERM, waits up to 1s, then SIGKILL if still running.
+
+    Returns:
+        True if daemon was stopped, False if not running.
+    """
     pid = read_pid()
     if pid is None:
         return False
@@ -142,3 +167,21 @@ def stop_daemon() -> bool:
         return True
     except (OSError, ProcessLookupError):
         return False
+
+
+def cleanup_stale_pid() -> None:
+    """Remove PID file if process doesn't exist.
+
+    Call this before starting daemon to clean up stale state.
+    """
+    pid = read_pid()
+    if pid is not None:
+        try:
+            os.kill(pid, 0)
+            # Process exists - don't clean up
+        except (OSError, ProcessLookupError):
+            # Process doesn't exist - clean up stale PID file
+            try:
+                config.pid_file.unlink(missing_ok=True)
+            except (OSError, PermissionError):
+                pass
