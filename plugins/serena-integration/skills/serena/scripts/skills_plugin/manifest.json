@@ -1,0 +1,9 @@
+{
+  "name": "serena",
+  "version": "1.0.0",
+  "description": "Semantic code navigation via Serena",
+  "dependencies": [
+    "httpx>=0.25"
+  ],
+  "daemon_version": ">=1.0.0"
+}

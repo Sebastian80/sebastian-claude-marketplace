@@ -72,7 +72,20 @@ class BaseFormatter(ABC):
 
 
 class HumanFormatter(BaseFormatter):
-    """Terminal-friendly output with ANSI colors."""
+    """Terminal-friendly output with ANSI colors.
+
+    Provides color constants as class attributes for subclasses:
+    RED, GREEN, YELLOW, CYAN, DIM, BOLD, RESET
+    """
+
+    # ANSI color codes (always enabled - CLI handles TTY detection)
+    RED = "\033[31m"
+    GREEN = "\033[32m"
+    YELLOW = "\033[33m"
+    CYAN = "\033[36m"
+    DIM = "\033[2m"
+    BOLD = "\033[1m"
+    RESET = "\033[0m"
 
     def format(self, data: Any) -> str:
         if isinstance(data, dict):

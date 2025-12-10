@@ -75,12 +75,21 @@ If you've already responded without fetching: Acknowledge the mistake, fetch now
 ## Instructions
 
 - **Use the `jira` wrapper** - not the underlying Python scripts directly
-- **Default to `--json` flag** when processing data programmatically
-- **Use `--help`** on any command to see options: `jira issue --help`
-- **Validate first**: Run `jira validate` before other operations
-- **Dry-run writes**: Use `--dry-run` for create/update/transition operations
+- **Default to `--format json`** when processing data programmatically
 - **Credentials**: Via `~/.env.jira` file or environment variables (see Authentication)
 - **Content formatting**: Use **jira-syntax** skill for descriptions/comments (Jira wiki markup, NOT Markdown)
+
+## API Self-Discovery
+
+Use `--help` to discover available commands and their parameters dynamically:
+
+```bash
+jira --help              # List all commands
+jira search --help       # Get search command parameters
+jira issue --help        # Get issue command parameters
+```
+
+The help is generated from the daemon's FastAPI metadata - always up-to-date with the actual API.
 
 ## Permission Setup
 

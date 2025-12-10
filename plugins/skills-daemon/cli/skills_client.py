@@ -24,12 +24,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from skills_daemon.colors import get_color_tuple
+from skills_daemon.config import config
 
-# Configuration
-DAEMON_URL = "http://127.0.0.1:9100"
-DAEMON_PORT = 9100
-PID_FILE = "/tmp/skills-daemon.pid"
-LOCK_FILE = "/tmp/skills-daemon.lock"
+# Configuration from centralized config
+DAEMON_URL = config.daemon_url
+DAEMON_PORT = config.port
+PID_FILE = str(config.pid_file)
+LOCK_FILE = str(config.state_dir / "daemon.lock")
 TIMEOUT = 30
 
 # Retry configuration
@@ -174,11 +175,14 @@ def ensure_daemon() -> bool:
     return start_daemon()
 
 
-def request(path: str, params: dict, method: str = "GET") -> dict:
+def request(path: str, params: dict, method: str = "GET") -> dict | str:
     """Make HTTP request to daemon with retry and exponential backoff.
 
     Retries on transient errors (connection refused, timeout).
     Does NOT retry on HTTP errors (4xx, 5xx) - those are legitimate responses.
+
+    Returns:
+        dict for JSON responses, str for plain text responses (format=human/ai/markdown)
     """
     url = f"{DAEMON_URL}/{path}"
     # Always use query params (FastAPI endpoints expect Query params)
@@ -195,7 +199,19 @@ def request(path: str, params: dict, method: str = "GET") -> dict:
             req.add_header("Content-Type", "application/json")
 
             with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
-                return json.loads(resp.read().decode())
+                body = resp.read().decode()
+                content_type = resp.headers.get("Content-Type", "")
+
+                # Handle plain text responses (format=human, ai, markdown)
+                if "text/plain" in content_type:
+                    return body  # Return raw text directly
+
+                # JSON response
+                try:
+                    return json.loads(body)
+                except json.JSONDecodeError:
+                    # Fallback: treat as plain text if JSON parsing fails
+                    return body
 
         except urllib.error.HTTPError as e:
             # HTTP errors are not transient - don't retry
@@ -286,8 +302,12 @@ POST_COMMANDS = {
 }
 
 
-def format_result(result: dict, fmt: str) -> str:
+def format_result(result: dict | str, fmt: str) -> str:
     """Format result for display."""
+    # Handle plain text responses (already formatted by daemon)
+    if isinstance(result, str):
+        return result
+
     # Handle explicit error responses
     if result.get("success") is False:
         out = f"{RED}Error:{RESET} {result.get('error', 'Unknown')}"
@@ -329,8 +349,15 @@ def format_result(result: dict, fmt: str) -> str:
                     if len(desc) > 60:
                         desc = desc[:57] + "..."
                     lines.append(f"{CYAN}{name:30}{RESET} {DIM}{desc}{RESET}")
+                # Jira issue output: {key, fields: {summary, status, ...}}
+                elif "key" in item and "fields" in item:
+                    key = item.get("key", "?")
+                    fields = item.get("fields", {})
+                    summary = fields.get("summary", "")[:50]
+                    status = fields.get("status", {}).get("name", "?")
+                    lines.append(f"{CYAN}{key:15}{RESET} {status:15} {summary}")
                 # Symbol output: {name_path, kind, relative_path, ...}
-                else:
+                elif "name_path" in item or "kind" in item:
                     name = item.get("name_path") or item.get("name", "?")
                     kind = item.get("kind", "")
                     kind_map = {
@@ -355,6 +382,9 @@ def format_result(result: dict, fmt: str) -> str:
                         child_loc = child.get("body_location") or child.get("location", {})
                         child_line = child_loc.get("start_line") or child_loc.get("line", 0)
                         lines.append(f"  {DIM}├─{RESET} {child_name} {DIM}({child_kind}) :{child_line}{RESET}")
+                # Unknown dict - show as compact JSON
+                else:
+                    lines.append(json.dumps(item, ensure_ascii=False, default=str))
             else:
                 lines.append(str(item))
         return "\n".join(lines)
@@ -367,6 +397,86 @@ def format_result(result: dict, fmt: str) -> str:
     return str(data)
 
 
+def format_help(result: dict, fmt: str = "compact") -> str:
+    """Format /help endpoint response for display."""
+    if fmt == "json":
+        return json.dumps(result, indent=2, ensure_ascii=False)
+
+    if "error" in result:
+        out = f"{RED}Error:{RESET} {result['error']}"
+        if available := result.get("available"):
+            out += f"\n{DIM}Available: {', '.join(available)}{RESET}"
+        return out
+
+    lines = []
+
+    # Plugin-level help
+    if "commands" in result:
+        name = result.get("plugin", "?")
+        desc = result.get("description", "")
+        version = result.get("version", "")
+
+        lines.append(f"{BOLD}{name}{RESET} - {desc}")
+        if version:
+            lines.append(f"{DIM}Version: {version}{RESET}")
+        lines.append("")
+        lines.append(f"{BOLD}Commands:{RESET}")
+
+        # Group by unique command name
+        seen = {}
+        for cmd in result.get("commands", []):
+            cmd_name = cmd.get("name", "?")
+            if cmd_name not in seen:
+                seen[cmd_name] = cmd
+            else:
+                # Merge methods
+                seen[cmd_name]["methods"] = list(set(seen[cmd_name].get("methods", []) + cmd.get("methods", [])))
+
+        for cmd_name, cmd in seen.items():
+            summary = cmd.get("summary", "")
+            methods = ", ".join(cmd.get("methods", []))
+            lines.append(f"  {CYAN}{cmd_name:20}{RESET} {DIM}[{methods}]{RESET} {summary}")
+
+        if hint := result.get("hint"):
+            lines.append("")
+            lines.append(f"{DIM}{hint}{RESET}")
+
+    # Command-level help
+    elif "parameters" in result:
+        name = result.get("command", "?")
+        plugin = result.get("plugin", "?")
+        summary = result.get("summary", "")
+        desc = result.get("description", "")
+        path = result.get("path", "")
+        methods = ", ".join(result.get("methods", []))
+
+        lines.append(f"{BOLD}{plugin} {name}{RESET} - {summary}")
+        if desc:
+            lines.append(f"{desc}")
+        lines.append("")
+        lines.append(f"{DIM}Path: {path}  Methods: {methods}{RESET}")
+
+        params = result.get("parameters", [])
+        if params:
+            lines.append("")
+            lines.append(f"{BOLD}Parameters:{RESET}")
+            for param in params:
+                pname = param.get("name", "?")
+                req = f"{RED}required{RESET}" if param.get("required") else f"{DIM}optional{RESET}"
+                pin = param.get("in", "query")
+                pdesc = param.get("description", "")
+                default = param.get("default")
+
+                line = f"  --{pname:20} [{req}]"
+                if pdesc:
+                    line += f" {pdesc}"
+                if default is not None:
+                    line += f" {DIM}(default: {default}){RESET}"
+                lines.append(line)
+
+    return "\n".join(lines)
+
+
 def main():
     args = sys.argv[1:]
 
@@ -376,12 +486,22 @@ def main():
         fmt = "json"
         args = [a for a in args if a not in ("--json", "-j")]
 
-    if "--help" in args or "-h" in args or not args:
-        print(f"""
+    # Check if --help is present (but NOT as the only arg - that's client help)
+    has_help = "--help" in args or "-h" in args
+
+    if has_help or not args:
+        # Remove help flags for processing
+        args = [a for a in args if a not in ("--help", "-h")]
+
+        if not args:
+            # No plugin specified - show client help
+            print(f"""
 {BOLD}Skills Client{RESET} - Unified CLI for skills daemon
 
 {BOLD}Usage:{RESET}
     skills-client <plugin> <command> [args...]
+    skills-client <plugin> --help              # Plugin help (from daemon)
+    skills-client <plugin> <command> --help    # Command help (from daemon)
     skills-client health
     skills-client plugins
 
@@ -392,9 +512,26 @@ def main():
 {BOLD}Examples:{RESET}
     skills-client health                       # Daemon health
     skills-client plugins                      # List available plugins
-    skills-client <plugin> <command> --param   # Call plugin endpoint
-    skills-client --json <plugin> <command>    # JSON output
+    skills-client jira --help                  # Jira plugin help
+    skills-client jira search --help           # Jira search command help
+    skills-client --json jira search --jql ... # JSON output
 """)
+            return
+
+        # Plugin specified with --help - fetch help from daemon
+        if not ensure_daemon():
+            print(f"{RED}Error:{RESET} Could not start daemon", file=sys.stderr)
+            sys.exit(1)
+
+        plugin = args[0]
+        command = args[1] if len(args) > 1 else None
+
+        if command:
+            result = request(f"{plugin}/help", {"command": command})
+        else:
+            result = request(f"{plugin}/help", {})
+
+        print(format_help(result, fmt))
         return
 
     plugin = args[0]
@@ -425,7 +562,8 @@ def main():
     result = request(f"{plugin}/{command}", params, method)
     print(format_result(result, fmt))
 
-    if not result.get("success"):
+    # Check for explicit failure (only for dict responses)
+    if isinstance(result, dict) and result.get("success") is False:
         sys.exit(1)
 
 

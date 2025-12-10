@@ -17,10 +17,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from skills_daemon.colors import get_color_tuple
+from skills_daemon.config import config
 
-DAEMON_URL = "http://127.0.0.1:9100"
-PID_FILE = "/tmp/skills-daemon.pid"
-LOG_FILE = "/tmp/skills-daemon.log"
+DAEMON_URL = config.daemon_url
+PID_FILE = str(config.pid_file)
+LOG_FILE = str(config.log_file)
 
 RED, GREEN, YELLOW, _, DIM, BOLD, RESET = get_color_tuple()
 
@@ -58,10 +59,14 @@ def cmd_start():
 
     print(f"{DIM}Starting skills daemon...{RESET}")
     skills_daemon = Path(__file__).parent.parent
-    venv_python = skills_daemon / ".venv" / "bin" / "python"
+    venv_python = config.venv_dir / "bin" / "python"
+
+    # Ensure runtime directories exist
+    config.ensure_dirs()
 
     if not venv_python.exists():
-        print(f"{RED}Error:{RESET} Run: cd {skills_daemon} && python -m venv .venv && .venv/bin/pip install -e .")
+        print(f"{RED}Error:{RESET} Venv not found at {config.venv_dir}")
+        print(f"Run: uv venv {config.venv_dir} && uv pip install --python {venv_python} -e {skills_daemon}")
         return 1
 
     try:

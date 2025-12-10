@@ -1,0 +1,10 @@
+{
+  "name": "jira",
+  "version": "1.0.0",
+  "description": "Jira issue tracking integration",
+  "dependencies": [
+    "atlassian-python-api>=4.0",
+    "httpx>=0.25"
+  ],
+  "daemon_version": ">=1.0.0"
+}

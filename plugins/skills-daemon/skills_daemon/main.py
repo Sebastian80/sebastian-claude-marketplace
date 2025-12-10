@@ -10,6 +10,8 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from pathlib import Path
+
 from . import __version__, DEFAULT_HOST, DEFAULT_PORT
 from .config import config
 from .lifecycle import LifecycleManager
@@ -20,6 +22,34 @@ from .plugins import registry
 # Slow request threshold (1 second)
 SLOW_REQUEST_THRESHOLD_MS = 1000
 
+
+def check_cwd_valid() -> bool:
+    """Check if working directory still exists.
+
+    Detects stale daemon processes whose working directory was deleted
+    (e.g., plugin source directory removed during update).
+    """
+    try:
+        cwd = Path.cwd()
+        # Check for (deleted) marker in /proc on Linux
+        proc_cwd = Path("/proc/self/cwd")
+        if proc_cwd.exists():
+            resolved = proc_cwd.resolve()
+            if "(deleted)" in str(resolved):
+                return False
+        return cwd.exists()
+    except Exception:
+        return False
+
+
+def check_venv_valid() -> bool:
+    """Check if venv is intact.
+
+    Verifies the stable runtime venv exists and has a working Python.
+    """
+    venv_python = config.venv_dir / "bin" / "python"
+    return venv_python.exists()
+
 # Lifecycle manager (initialized on startup)
 lifecycle: LifecycleManager = None
 
@@ -28,7 +58,20 @@ lifecycle: LifecycleManager = None
 async def lifespan(app: FastAPI):
     """Manage application lifecycle."""
     global lifecycle
+    from .dependencies import sync_plugin_dependencies
+
     lifecycle = LifecycleManager()
+
+    # Ensure runtime directories exist
+    config.ensure_dirs()
+
+    # Sync plugin dependencies before loading
+    dep_result = sync_plugin_dependencies()
+    if dep_result.get("installed"):
+        logger.info(
+            "Installed plugin dependencies",
+            installed=dep_result["installed"],
+        )
 
     # Write PID file
     lifecycle.write_pid_file()
@@ -163,7 +206,12 @@ async def global_exception_handler(request: Request, exc: Exception):
 # Core endpoints
 @app.get("/health")
 async def health() -> dict[str, Any]:
-    """Health check endpoint."""
+    """Health check endpoint.
+
+    Returns daemon status including self-healing checks:
+    - cwd_valid: False if working directory was deleted (stale process)
+    - venv_valid: False if venv is corrupted/missing
+    """
     plugin_health = {}
     for plugin in registry.all():
         try:
@@ -171,9 +219,14 @@ async def health() -> dict[str, Any]:
         except Exception as e:
             plugin_health[plugin.name] = {"status": "error", "error": str(e)}
 
+    cwd_valid = check_cwd_valid()
+    venv_valid = check_venv_valid()
+
     return {
         "status": "running",
         "version": __version__,
+        "cwd_valid": cwd_valid,
+        "venv_valid": venv_valid,
         "plugins": registry.names(),
         "plugin_health": plugin_health,
     }
@@ -200,6 +253,134 @@ async def list_plugins() -> dict[str, Any]:
         })
 
     return {"plugins": plugins}
+
+
+@app.get("/{plugin}/help")
+async def plugin_help(plugin: str, command: str = None) -> dict[str, Any]:
+    """Generate CLI help from FastAPI metadata.
+
+    This endpoint enables self-discovery - Claude can call this
+    to learn available commands and their parameters.
+
+    Args:
+        plugin: Plugin name (e.g., 'jira', 'serena')
+        command: Optional command name for detailed help
+    """
+    plugin_obj = registry.get(plugin)
+    if not plugin_obj:
+        return {"error": f"Unknown plugin: {plugin}", "available": registry.names()}
+
+    if command:
+        return _generate_command_help(plugin_obj, command)
+    else:
+        return _generate_plugin_help(plugin_obj)
+
+
+def _generate_plugin_help(plugin) -> dict[str, Any]:
+    """Generate help for entire plugin from FastAPI metadata."""
+    commands = []
+    for route in plugin.router.routes:
+        if not hasattr(route, "methods") or not hasattr(route, "path"):
+            continue
+
+        # Get route name from path
+        path_parts = route.path.strip("/").split("/")
+        name = path_parts[0] if path_parts[0] else "root"
+
+        # Skip internal routes
+        if name.startswith("_"):
+            continue
+
+        # Get metadata from FastAPI route
+        summary = getattr(route, "summary", None) or route.name or name
+        methods = list(getattr(route, "methods", ["GET"]))
+
+        commands.append({
+            "name": name,
+            "path": route.path,
+            "summary": summary,
+            "methods": methods,
+        })
+
+    return {
+        "plugin": plugin.name,
+        "description": plugin.description,
+        "version": plugin.version,
+        "commands": commands,
+        "hint": f"Call GET /{plugin.name}/help?command=<name> for detailed command help",
+    }
+
+
+def _generate_command_help(plugin, command: str) -> dict[str, Any]:
+    """Generate detailed help for a specific command."""
+    for route in plugin.router.routes:
+        if not hasattr(route, "path"):
+            continue
+
+        path_parts = route.path.strip("/").split("/")
+        route_name = path_parts[0] if path_parts[0] else "root"
+
+        if route_name != command:
+            continue
+
+        # Extract parameters from FastAPI's dependant
+        params = []
+        if hasattr(route, "dependant") and route.dependant:
+            # Query parameters
+            for param in getattr(route.dependant, "query_params", []):
+                # Check if required (default is ... or PydanticUndefined)
+                default_val = getattr(param.field_info, "default", None)
+                is_required = default_val is ... or (
+                    hasattr(default_val, "__class__") and
+                    "PydanticUndefined" in default_val.__class__.__name__
+                )
+
+                param_info = {
+                    "name": param.name,
+                    "in": "query",
+                    "required": is_required,
+                }
+                if hasattr(param.field_info, "description") and param.field_info.description:
+                    param_info["description"] = param.field_info.description
+                # Only add default if it's a serializable value
+                if not is_required and default_val is not None:
+                    try:
+                        # Test if serializable
+                        import json
+                        json.dumps(default_val)
+                        param_info["default"] = default_val
+                    except (TypeError, ValueError):
+                        pass  # Skip non-serializable defaults
+                params.append(param_info)
+
+            # Path parameters
+            for param in getattr(route.dependant, "path_params", []):
+                params.append({
+                    "name": param.name,
+                    "in": "path",
+                    "required": True,
+                })
+
+        return {
+            "plugin": plugin.name,
+            "command": command,
+            "path": f"/{plugin.name}{route.path}",
+            "summary": getattr(route, "summary", "") or route.name or command,
+            "description": getattr(route, "description", "") or "",
+            "methods": list(getattr(route, "methods", ["GET"])),
+            "parameters": params,
+        }
+
+    # Command not found
+    available = []
+    for route in plugin.router.routes:
+        if hasattr(route, "path"):
+            path_parts = route.path.strip("/").split("/")
+            name = path_parts[0] if path_parts[0] else "root"
+            if not name.startswith("_"):
+                available.append(name)
+
+    return {"error": f"Unknown command: {command}", "available": list(set(available))}
 
 
 @app.post("/shutdown")
