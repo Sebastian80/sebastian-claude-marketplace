@@ -1,7 +1,7 @@
 {
   "_meta": {
     "version": 1,
-    "updated_at": "2025-12-08T17:21:16.266575"
+    "updated_at": "2025-12-10T15:12:24.300899"
   },
   "issue_types": {
     "Sub: Technical task": {
@@ -121,6 +121,261 @@
             "id": "781",
             "name": "Close",
             "to": "Geschlossen"
+          }
+        ]
+      }
+    },
+    "Technical task": {
+      "id": "11201",
+      "discovered_from": "OPSDHL-2851",
+      "discovered_at": "2025-12-10T15:08:10.965909",
+      "states": {
+        "Fertig": [
+          {
+            "id": "641",
+            "name": "Reopen",
+            "to": "Neuer\u00f6ffnet"
+          },
+          {
+            "id": "781",
+            "name": "Close",
+            "to": "Geschlossen"
+          }
+        ],
+        "Neuer\u00f6ffnet": [
+          {
+            "id": "681",
+            "name": "Start working",
+            "to": "In Arbeit"
+          },
+          {
+            "id": "691",
+            "name": "Re-analyze",
+            "to": "Analyse"
+          },
+          {
+            "id": "711",
+            "name": "Require feedback",
+            "to": "Waiting"
+          },
+          {
+            "id": "701",
+            "name": "Postpone",
+            "to": "New"
+          }
+        ],
+        "In Arbeit": [
+          {
+            "id": "651",
+            "name": "Send to QA",
+            "to": "Waiting for QA"
+          },
+          {
+            "id": "41",
+            "name": "Stop working",
+            "to": "Offen"
+          },
+          {
+            "id": "51",
+            "name": "Require feedback",
+            "to": "Waiting"
+          }
+        ],
+        "Waiting for QA": [
+          {
+            "id": "721",
+            "name": "Start QA",
+            "to": "QA / Revision"
+          },
+          {
+            "id": "731",
+            "name": "Resume work",
+            "to": "In Arbeit"
+          }
+        ],
+        "QA / Revision": [
+          {
+            "id": "751",
+            "name": "Require deployment",
+            "to": "Ready for deployment"
+          },
+          {
+            "id": "671",
+            "name": "Return for revision",
+            "to": "Neuer\u00f6ffnet"
+          },
+          {
+            "id": "661",
+            "name": "Done & close",
+            "to": "Geschlossen"
+          },
+          {
+            "id": "741",
+            "name": "Resume work",
+            "to": "In Arbeit"
+          },
+          {
+            "id": "791",
+            "name": "Done",
+            "to": "Fertig"
+          }
+        ],
+        "Ready for deployment": [
+          {
+            "id": "761",
+            "name": "Released & Close",
+            "to": "Geschlossen"
+          },
+          {
+            "id": "641",
+            "name": "Reopen",
+            "to": "Neuer\u00f6ffnet"
+          },
+          {
+            "id": "791",
+            "name": "Done",
+            "to": "Fertig"
+          }
+        ]
+      }
+    },
+    "Neue Aufgabe": {
+      "id": "3",
+      "discovered_from": "NRECOM-364",
+      "discovered_at": "2025-12-10T15:12:21.021241",
+      "states": {
+        "New": [
+          {
+            "id": "251",
+            "name": "Approve",
+            "to": "Offen"
+          },
+          {
+            "id": "381",
+            "name": "Waiting for approval",
+            "to": "Waiting for approval"
+          },
+          {
+            "id": "391",
+            "name": "Analyze",
+            "to": "Analyse"
+          },
+          {
+            "id": "711",
+            "name": "Postpone & close",
+            "to": "Geschlossen"
+          }
+        ],
+        "Offen": [
+          {
+            "id": "11",
+            "name": "Require feedback",
+            "to": "Waiting"
+          },
+          {
+            "id": "21",
+            "name": "Start working",
+            "to": "In Arbeit"
+          },
+          {
+            "id": "521",
+            "name": "Re-analyze",
+            "to": "Analyse"
+          },
+          {
+            "id": "571",
+            "name": "Postpone",
+            "to": "New"
+          },
+          {
+            "id": "681",
+            "name": "Postpone & Close",
+            "to": "Geschlossen"
+          }
+        ],
+        "Waiting": [
+          {
+            "id": "31",
+            "name": "Sent feedback",
+            "to": "Offen"
+          },
+          {
+            "id": "241",
+            "name": "Start working",
+            "to": "In Arbeit"
+          },
+          {
+            "id": "311",
+            "name": "Waiting for approval",
+            "to": "Waiting for approval"
+          },
+          {
+            "id": "591",
+            "name": "Postpone",
+            "to": "New"
+          }
+        ],
+        "In Arbeit": [
+          {
+            "id": "41",
+            "name": "Stop working",
+            "to": "Offen"
+          },
+          {
+            "id": "51",
+            "name": "Require feedback",
+            "to": "Waiting"
+          },
+          {
+            "id": "621",
+            "name": "Complete",
+            "to": "Fertig"
+          },
+          {
+            "id": "741",
+            "name": "Get UAT approval",
+            "to": "UAT Stage"
+          }
+        ],
+        "Fertig": [
+          {
+            "id": "691",
+            "name": "Close",
+            "to": "Geschlossen"
+          },
+          {
+            "id": "701",
+            "name": "Reopen",
+            "to": "New"
+          }
+        ],
+        "UAT Stage": [
+          {
+            "id": "721",
+            "name": "Approved for PROD",
+            "to": "Deploy to Prod"
+          },
+          {
+            "id": "751",
+            "name": "Require feedback",
+            "to": "Waiting"
+          },
+          {
+            "id": "771",
+            "name": "Rejected, new analysys",
+            "to": "Analyse"
+          }
+        ],
+        "Deploy to Prod": [
+          {
+            "id": "731",
+            "name": "Deployed to PROD",
+            "to": "Fertig"
+          },
+          {
+            "id": "761",
+            "name": "Require feedback",
+            "to": "Waiting"
           }
         ]
       }
