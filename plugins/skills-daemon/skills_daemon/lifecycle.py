@@ -47,7 +47,12 @@ class LifecycleManager:
             self.shutdown_event.set()
 
         for sig in (signal.SIGTERM, signal.SIGINT):
-            loop.add_signal_handler(sig, lambda s=sig: handle_signal(s))
+            try:
+                loop.add_signal_handler(sig, lambda s=sig: handle_signal(s))
+            except (RuntimeError, NotImplementedError):
+                # Signal handlers only work in main thread
+                # Skip setup in tests or non-main threads
+                logger.debug(f"Skipping signal handler setup (not in main thread)")
 
     def touch(self) -> None:
         """Update last request time (call on each request)."""
