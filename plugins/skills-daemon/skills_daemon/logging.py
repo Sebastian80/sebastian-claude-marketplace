@@ -8,15 +8,38 @@ Features:
 """
 
 import atexit
+import contextvars
 import json
 import logging
 import logging.handlers
 import queue
 import sys
+import uuid
 from datetime import datetime, timezone
 from typing import Any
 
 from . import LOG_FILE
+
+# Context variable for request correlation
+request_id_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    'request_id', default=None
+)
+
+
+def get_request_id() -> str | None:
+    """Get current request ID from context."""
+    return request_id_ctx.get()
+
+
+def set_request_id(request_id: str) -> contextvars.Token:
+    """Set request ID in context."""
+    return request_id_ctx.set(request_id)
+
+
+def generate_request_id() -> str:
+    """Generate a new request ID."""
+    return str(uuid.uuid4())[:8]  # Short ID for readability
+
 
 # Log rotation settings
 MAX_BYTES = 5 * 1024 * 1024  # 5MB
@@ -33,6 +56,11 @@ class StructuredFormatter(logging.Formatter):
             "logger": record.name,
             "message": record.getMessage(),
         }
+
+        # Add request_id from context if available
+        request_id = request_id_ctx.get()
+        if request_id:
+            entry["request_id"] = request_id
 
         # Add extra fields
         if hasattr(record, "event"):

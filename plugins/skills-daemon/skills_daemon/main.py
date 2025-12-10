@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 
 from . import __version__, DEFAULT_HOST, DEFAULT_PORT
 from .lifecycle import LifecycleManager
-from .logging import logger
+from .logging import logger, set_request_id, generate_request_id, request_id_ctx
 from .plugins import registry
 
 
@@ -85,24 +85,35 @@ app = FastAPI(
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     """Log all requests and update idle timeout."""
+    # Generate and set request ID
+    request_id = request.headers.get('X-Request-ID', generate_request_id())
+    token = set_request_id(request_id)
+
     start = time.time()
 
     # Update last request time
     if lifecycle:
         lifecycle.touch()
 
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
 
-    duration_ms = (time.time() - start) * 1000
-    logger.debug(
-        "request",
-        method=request.method,
-        path=str(request.url.path),
-        status=response.status_code,
-        duration_ms=round(duration_ms, 2),
-    )
+        duration_ms = (time.time() - start) * 1000
+        logger.debug(
+            "request",
+            request_id=request_id,
+            method=request.method,
+            path=str(request.url.path),
+            status=response.status_code,
+            duration_ms=round(duration_ms, 2),
+        )
 
-    return response
+        # Add request ID to response headers
+        response.headers["X-Request-ID"] = request_id
+        return response
+    finally:
+        # Reset context
+        request_id_ctx.reset(token)
 
 
 # Global exception handler
