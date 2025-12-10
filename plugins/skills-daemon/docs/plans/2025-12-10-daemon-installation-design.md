@@ -1,7 +1,7 @@
 # Skills Daemon Installation & Lifecycle Design
 
 **Date:** 2025-12-10
-**Status:** Draft
+**Status:** Final Draft
 **Author:** Sebastian + Claude
 
 ## Overview
@@ -10,558 +10,558 @@ This document describes the architecture for:
 1. Automated dependency installation when plugins register
 2. Prevention of stale daemon processes
 3. Proper installation flow for the daemon
-4. Zero-sudo, fully user-space operation
+4. CLI help generation from single source of truth
+5. Zero-sudo, fully user-space operation
 
-## Design Decisions
+## Design Principles
 
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| Dependency scope | Shared daemon venv + plugin deps | Simple, plugins extend shared venv |
-| Dep installation timing | Startup scan + hot-install | Fast startup, runtime flexibility |
-| Dependency declaration | `manifest.json` in skills_plugin/ | Readable before import (critical) |
-| Stale process handling | Client-side recovery | No watchdog complexity, transparent |
-| Runtime location | `~/.local/share/skills-daemon/` | Survives plugin updates |
-| Installation method | Marketplace wrapper script | Works without modifying Claude Code |
+| Principle | Implementation |
+|-----------|----------------|
+| **Single source of truth** | FastAPI defines API + generates CLI help |
+| **Everything through daemon** | All CLI commands route through daemon |
+| **Self-healing** | Client detects stale daemon, auto-recovers |
+| **Lazy setup** | First use triggers installation, no explicit install step |
+| **Zero sudo** | All files in user home directory |
 
 ---
 
-## Architecture
+## Architecture Overview
 
-### Directory Structure
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                         ARCHITECTURE                                 │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  ~/.local/bin/jira  (trivial wrapper)                               │
+│        │                                                             │
+│        ▼                                                             │
+│  skills-client                                                       │
+│        │                                                             │
+│        ├── --help?  → GET /jira/help (generated from FastAPI)       │
+│        ├── ensure_runtime()                                         │
+│        ├── ensure_deps()                                            │
+│        ├── ensure_daemon()                                          │
+│        └── request()                                                │
+│        │                                                             │
+│        ▼                                                             │
+│  DAEMON (:9100)                                                      │
+│        │                                                             │
+│        ├── GET  /health         → Status + validity checks          │
+│        ├── GET  /plugins        → List plugins                      │
+│        ├── GET  /{plugin}/help  → Generated CLI help                │
+│        ├── GET  /{plugin}/commands → List commands                  │
+│        ├── *    /{plugin}/*     → Plugin endpoints                  │
+│        └── GET  /docs           → Swagger UI                        │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Directory Structure
 
 ```
 ~/.local/share/skills-daemon/          # Stable runtime (survives updates)
 ├── venv/                              # Python virtual environment
-├── plugins.json                       # Registered plugins + their deps
-└── daemon.pid                         # PID file
+├── logs/                              # Log files (rotated)
+│   └── daemon.log
+└── state/
+    ├── daemon.pid                     # PID file
+    └── plugins.json                   # Registered plugins cache
 
 ~/.local/bin/                          # CLI entry points
 ├── skills-daemon                      # Daemon control
 ├── skills-client                      # Generic client
-├── jira                               # Plugin-specific CLI
-└── serena                             # Plugin-specific CLI
+├── jira                               # Plugin CLI (trivial wrapper)
+└── serena                             # Plugin CLI (trivial wrapper)
 
-~/.config/skills-daemon/               # Configuration
-└── config.toml                        # User settings (optional)
+~/.config/skills-daemon/               # Configuration (optional)
+└── config.toml
 
-~/.claude/plugins/.../skills-daemon/   # Source code only
-└── (never run from here)
-```
-
-### Component Diagram
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        Installation Flow                             │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                      │
-│  User: sebastian-marketplace install skills-daemon                   │
-│                          │                                           │
-│                          ▼                                           │
-│  ┌──────────────────────────────────────┐                           │
-│  │  Marketplace install.sh               │                           │
-│  │  1. claude plugins install X          │                           │
-│  │  2. Read plugin.json (postInstall)    │                           │
-│  │  3. Run setup script                  │                           │
-│  │  4. Create CLI entry points           │                           │
-│  └──────────────────────────────────────┘                           │
-│                          │                                           │
-│                          ▼                                           │
-│  ┌──────────────────────────────────────┐                           │
-│  │  setup.sh                             │                           │
-│  │  1. Create ~/.local/share/skills-daemon│                          │
-│  │  2. Create venv with uv               │                           │
-│  │  3. Install core deps                 │                           │
-│  │  4. Scan plugin manifests             │                           │
-│  │  5. Install plugin deps               │                           │
-│  └──────────────────────────────────────┘                           │
-│                                                                      │
-└─────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────┐
-│                         Runtime Flow                                 │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                      │
-│  User: jira search "assignee = currentUser()"                        │
-│                          │                                           │
-│                          ▼                                           │
-│  ┌──────────────────────────────────────┐                           │
-│  │  ~/.local/bin/jira (wrapper)          │                           │
-│  │  1. Check daemon health               │                           │
-│  │  2. If stale → recover (kill+restart) │                           │
-│  │  3. Forward request to daemon         │                           │
-│  └──────────────────────────────────────┘                           │
-│                          │                                           │
-│                          ▼                                           │
-│  ┌──────────────────────────────────────┐                           │
-│  │  Skills Daemon (FastAPI)              │                           │
-│  │  - Runs from stable venv              │                           │
-│  │  - Plugins loaded dynamically         │                           │
-│  │  - Auto-shutdown on 30min idle        │                           │
-│  └──────────────────────────────────────┘                           │
-│                                                                      │
-└─────────────────────────────────────────────────────────────────────┘
+~/.claude/plugins/.../skills-daemon/   # Source code only (never run from here)
+~/.claude/plugins/.../jira-integration/
+└── skills/jira-communication/scripts/skills_plugin/
+    ├── __init__.py                    # Plugin implementation
+    └── manifest.json                  # Dependencies + metadata
 ```
 
 ---
 
-## Plugin Dependency Declaration
+## Documentation Separation
 
-### manifest.json Schema
+| Document | Audience | Purpose | Location |
+|----------|----------|---------|----------|
+| **SKILL.md** | Claude (AI) | Behavioral instructions, rules, examples | Plugin skill dir |
+| **manifest.json** | Daemon/Tooling | Dependencies, version, metadata | skills_plugin/ |
+| **FastAPI endpoints** | Everyone | API definition (source of truth) | Plugin code |
+| **`/help` endpoint** | CLI users | Generated from FastAPI | Daemon |
+| **`/docs` endpoint** | Developers | Swagger UI | Daemon |
 
-Each plugin that registers with the daemon should have a `manifest.json`:
+**Key insight:** CLI help is NOT in SKILL.md (that's for AI). CLI help is generated from FastAPI metadata.
 
-```
-~/.claude/plugins/.../jira-integration/
-└── skills/jira-communication/scripts/skills_plugin/
-    ├── __init__.py
-    └── manifest.json    ← NEW
-```
+---
 
-**manifest.json format:**
+## Plugin manifest.json Schema
 
 ```json
 {
   "name": "jira",
   "version": "1.0.0",
-  "description": "Jira integration for skills daemon",
+  "description": "Jira issue tracking integration",
   "dependencies": [
     "atlassian-python-api>=4.0",
     "httpx>=0.25"
   ],
-  "daemon_version": ">=1.0.0"
+  "daemon_version": ">=1.0.0",
+  "cli": {
+    "examples": [
+      "jira search \"assignee = currentUser()\"",
+      "jira issue get PROJ-123"
+    ]
+  }
 }
 ```
 
-### Dependency Resolution
+**Fields:**
+- `name` - Plugin identifier (required)
+- `version` - Semver version (required)
+- `description` - Short description (required)
+- `dependencies` - Python packages to install (optional)
+- `daemon_version` - Compatible daemon versions (optional)
+- `cli.examples` - Example commands for help output (optional)
 
-On daemon startup:
-1. Scan all `skills_plugin/manifest.json` files
-2. Collect all dependencies
-3. Compare with installed packages in venv
-4. Install missing packages via `uv pip install`
-5. Log results
+---
+
+## CLI Help Generation
+
+### Source: FastAPI Metadata
 
 ```python
-# Pseudo-code
-def ensure_plugin_dependencies():
-    manifests = glob("~/.claude/plugins/**/skills_plugin/manifest.json")
-    required = set()
-    for m in manifests:
-        data = json.load(m)
-        required.update(data.get("dependencies", []))
+class JiraPlugin(SkillPlugin):
+    name = "jira"
+    description = "Jira issue tracking integration"
 
-    installed = get_installed_packages()
-    missing = required - installed
+    @router.get("/search", summary="Search issues", description="Search for issues using JQL query language")
+    async def search(
+        query: str = Query(..., description="JQL query string"),
+        max_results: int = Query(50, description="Maximum results to return"),
+    ):
+        """Search for Jira issues using JQL.
 
-    if missing:
-        logger.info(f"Installing plugin dependencies: {missing}")
-        subprocess.run(["uv", "pip", "install", *missing])
+        Supports full JQL syntax including functions like currentUser().
+        """
+        ...
+```
+
+### Generated Output
+
+```
+$ jira --help
+
+jira - Jira issue tracking integration
+
+Commands:
+  search      Search for issues using JQL
+  issue       Get or update issue details
+  create      Create new issue
+  transition  Change issue status
+  comment     Add comment to issue
+  worklog     Log time on issue
+
+Examples:
+  jira search "assignee = currentUser()"
+  jira issue get PROJ-123
+
+Run 'jira <command> --help' for command details.
+```
+
+```
+$ jira search --help
+
+jira search - Search for issues using JQL
+
+Search for Jira issues using JQL. Supports full JQL syntax
+including functions like currentUser().
+
+Options:
+  --query        JQL query string (required)
+  --max-results  Maximum results to return (default: 50)
+
+Example:
+  jira search --query "project = PROJ AND status = Open"
+```
+
+### Implementation: /help Endpoint
+
+```python
+@app.get("/{plugin}/help")
+async def plugin_help(plugin: str, command: str | None = None) -> dict:
+    """Generate CLI help from FastAPI metadata."""
+    plugin_obj = registry.get(plugin)
+    if not plugin_obj:
+        return {"error": f"Unknown plugin: {plugin}"}
+
+    if command:
+        return generate_command_help(plugin_obj, command)
+    else:
+        return generate_plugin_help(plugin_obj)
+
+
+def generate_plugin_help(plugin: SkillPlugin) -> dict:
+    """Generate help for entire plugin."""
+    commands = []
+    for route in plugin.router.routes:
+        if hasattr(route, 'summary'):
+            commands.append({
+                "name": route.path.strip('/'),
+                "summary": route.summary or route.name,
+            })
+
+    # Load examples from manifest if available
+    manifest = load_manifest(plugin.name)
+    examples = manifest.get("cli", {}).get("examples", [])
+
+    return {
+        "name": plugin.name,
+        "description": plugin.description,
+        "commands": commands,
+        "examples": examples,
+    }
 ```
 
 ---
 
-## Stale Process Prevention & Recovery
+## CLI Wrapper Pattern
 
-### Root Cause
+### Trivial Wrapper (Recommended)
 
-Staleness occurs when:
-1. Plugin directory is deleted/replaced during update
-2. Daemon's working directory becomes invalid
-3. Venv is inside the deleted directory
+```bash
+#!/bin/bash
+# ~/.local/bin/jira
+exec skills-client jira "$@"
+```
+
+### skills-client Help Handling
+
+```python
+def main():
+    args = sys.argv[1:]
+
+    # Handle --help at any position
+    if "--help" in args or "-h" in args:
+        plugin = args[0] if args and not args[0].startswith("-") else None
+        command = args[1] if len(args) > 1 and not args[1].startswith("-") else None
+
+        if plugin:
+            show_help(plugin, command)
+        else:
+            show_client_help()
+        return
+
+    # Normal flow
+    ensure_daemon()
+    # ... rest of request handling
+
+
+def show_help(plugin: str, command: str | None):
+    """Fetch and display help from daemon."""
+    ensure_daemon()
+
+    if command:
+        result = request(f"{plugin}/help", {"command": command})
+    else:
+        result = request(f"{plugin}/help", {})
+
+    print(format_help(result))
+```
+
+---
+
+## Self-Healing Architecture
 
 ### Prevention: Stable Runtime Location
 
 ```
 BEFORE (fragile):
-~/.claude/plugins/.../skills-daemon/
-├── .venv/              ← deleted on update!
-└── skills_daemon/
+~/.claude/plugins/.../skills-daemon/.venv/  ← deleted on update
 
 AFTER (stable):
-~/.local/share/skills-daemon/
-├── venv/               ← survives updates
-└── (runtime state)
-
-~/.claude/plugins/.../skills-daemon/
-└── skills_daemon/      ← source only
+~/.local/share/skills-daemon/venv/          ← survives updates
 ```
 
-### Detection: Health Check Enhancement
+### Detection: Enhanced Health Check
 
-**Enhanced /health response:**
-
-```json
-{
-  "status": "running",
-  "version": "1.0.0",
-  "cwd_valid": true,
-  "venv_valid": true,
-  "uptime_seconds": 3600,
-  "plugins": ["jira", "serena"]
-}
-```
-
-**cwd_valid check:**
 ```python
+@app.get("/health")
+async def health() -> dict:
+    return {
+        "status": "running",
+        "version": __version__,
+        "cwd_valid": check_cwd_valid(),
+        "venv_valid": check_venv_valid(),
+        "uptime_seconds": get_uptime(),
+        "plugins": registry.names(),
+        "plugin_health": get_plugin_health(),
+    }
+
+
 def check_cwd_valid() -> bool:
+    """Check if working directory still exists."""
     try:
-        cwd = Path("/proc/self/cwd").resolve()
-        return cwd.exists() and "(deleted)" not in str(cwd)
+        cwd = Path.cwd()
+        # Check for (deleted) marker in /proc
+        proc_cwd = Path("/proc/self/cwd").resolve()
+        return cwd.exists() and "(deleted)" not in str(proc_cwd)
     except:
         return False
+
+
+def check_venv_valid() -> bool:
+    """Check if venv is intact."""
+    venv = Path.home() / ".local/share/skills-daemon/venv"
+    return (venv / "bin/python").exists()
 ```
 
 ### Recovery: Client-Side Auto-Heal
 
-**CLI wrapper flow:**
+```python
+# In skills-client
+def ensure_daemon() -> bool:
+    """Ensure daemon is running and healthy."""
 
-```bash
-#!/bin/bash
-# ~/.local/bin/jira
+    # Quick health check
+    try:
+        health = request_raw("/health", timeout=1)
+        if health.get("cwd_valid") == False or health.get("venv_valid") == False:
+            print("Daemon unhealthy, recovering...", file=sys.stderr)
+            recover_daemon()
+            return ensure_daemon()  # Retry
+        return True
+    except:
+        pass
 
-DAEMON_URL="http://127.0.0.1:9100"
-RUNTIME="$HOME/.local/share/skills-daemon"
+    # Daemon not running - start it
+    return start_daemon()
 
-# Health check with validation
-health=$(curl -s --max-time 2 "$DAEMON_URL/health" 2>/dev/null)
-status=$?
 
-# Check if daemon is healthy
-if [ $status -ne 0 ] || [ "$(echo "$health" | jq -r '.cwd_valid')" = "false" ]; then
-    echo "Recovering daemon..." >&2
-
+def recover_daemon():
+    """Kill stale daemon and clean up."""
     # Graceful shutdown attempt
-    curl -s -X POST "$DAEMON_URL/shutdown" 2>/dev/null
-    sleep 1
+    try:
+        request_raw("/shutdown", method="POST", timeout=2)
+        time.sleep(1)
+    except:
+        pass
 
     # Force kill if still running
-    pkill -f "skills_daemon.main" 2>/dev/null
-    sleep 1
-
-    # Start fresh
-    "$RUNTIME/venv/bin/python" -m skills_daemon.main &
-
-    # Wait for healthy
-    for i in {1..30}; do
-        sleep 0.1
-        curl -s "$DAEMON_URL/health" >/dev/null 2>&1 && break
-    done
-fi
-
-# Execute command
-exec skills-client jira "$@"
+    subprocess.run(["pkill", "-f", "skills_daemon.main"], capture_output=True)
+    time.sleep(0.5)
 ```
 
 ---
 
-## Installation Flow
+## Dependency Management
 
-### Extended plugin.json Schema
-
-```json
-{
-  "name": "skills-daemon",
-  "version": "1.0.0",
-  "description": "Central daemon for Claude Code skills",
-  "author": { "name": "Sebastian" },
-  "license": "MIT",
-
-  "postInstall": "scripts/setup.sh",
-  "postUpdate": "scripts/upgrade.sh",
-
-  "cliEntryPoints": {
-    "skills-daemon": {
-      "script": "cli/daemon_ctl.py",
-      "description": "Daemon control (start/stop/status)"
-    },
-    "skills-client": {
-      "script": "cli/skills_client.py",
-      "description": "Generic skills client"
-    }
-  }
-}
-```
-
-### Marketplace install.sh
-
-```bash
-#!/bin/bash
-# ~/.claude/plugins/marketplaces/sebastian-marketplace/scripts/install.sh
-
-set -e
-
-PLUGIN="$1"
-MARKETPLACE_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-PLUGIN_DIR="$MARKETPLACE_ROOT/plugins/$PLUGIN"
-PLUGIN_JSON="$PLUGIN_DIR/.claude-plugin/plugin.json"
-
-# Colors
-GREEN='\033[32m'
-YELLOW='\033[33m'
-RED='\033[31m'
-DIM='\033[2m'
-RESET='\033[0m'
-
-echo -e "${DIM}Installing $PLUGIN...${RESET}"
-
-# 1. Call Claude Code's native install
-if command -v claude &>/dev/null; then
-    claude plugins install "$PLUGIN" 2>/dev/null || true
-fi
-
-# 2. Check for plugin.json
-if [ ! -f "$PLUGIN_JSON" ]; then
-    echo -e "${RED}Error: Plugin not found: $PLUGIN${RESET}"
-    exit 1
-fi
-
-# 3. Read postInstall script
-POST_INSTALL=$(jq -r '.postInstall // empty' "$PLUGIN_JSON")
-
-if [ -n "$POST_INSTALL" ]; then
-    echo -e "${DIM}Running post-install...${RESET}"
-    SCRIPT_PATH="$PLUGIN_DIR/$POST_INSTALL"
-
-    if [ -x "$SCRIPT_PATH" ]; then
-        if "$SCRIPT_PATH"; then
-            echo -e "${GREEN}✓ Post-install completed${RESET}"
-        else
-            echo -e "${RED}✗ Post-install failed${RESET}"
-            exit 1
-        fi
-    else
-        echo -e "${YELLOW}Warning: Post-install script not executable: $SCRIPT_PATH${RESET}"
-    fi
-fi
-
-# 4. Create CLI entry points
-CLI_ENTRIES=$(jq -r '.cliEntryPoints // empty | keys[]' "$PLUGIN_JSON" 2>/dev/null)
-
-if [ -n "$CLI_ENTRIES" ]; then
-    mkdir -p "$HOME/.local/bin"
-
-    for cmd in $CLI_ENTRIES; do
-        SCRIPT=$(jq -r ".cliEntryPoints[\"$cmd\"].script // .cliEntryPoints[\"$cmd\"]" "$PLUGIN_JSON")
-        WRAPPER="$HOME/.local/bin/$cmd"
-
-        # Determine the runtime location
-        RUNTIME="$HOME/.local/share/skills-daemon"
-
-        cat > "$WRAPPER" << EOF
-#!/bin/bash
-exec "$RUNTIME/venv/bin/python" "$PLUGIN_DIR/$SCRIPT" "\$@"
-EOF
-        chmod +x "$WRAPPER"
-        echo -e "${GREEN}✓ Created CLI: $cmd${RESET}"
-    done
-fi
-
-echo -e "${GREEN}✓ $PLUGIN installed successfully${RESET}"
-```
-
-### Plugin setup.sh (skills-daemon)
-
-```bash
-#!/bin/bash
-# skills-daemon/scripts/setup.sh
-
-set -e
-
-RUNTIME="$HOME/.local/share/skills-daemon"
-PLUGIN_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-
-GREEN='\033[32m'
-DIM='\033[2m'
-RESET='\033[0m'
-
-echo -e "${DIM}Setting up skills daemon runtime...${RESET}"
-
-# 1. Create runtime directory
-mkdir -p "$RUNTIME"
-
-# 2. Create venv if not exists
-if [ ! -d "$RUNTIME/venv" ]; then
-    echo -e "${DIM}Creating virtual environment...${RESET}"
-    uv venv "$RUNTIME/venv"
-fi
-
-# 3. Install core dependencies
-echo -e "${DIM}Installing dependencies...${RESET}"
-"$RUNTIME/venv/bin/pip" install -q \
-    fastapi \
-    uvicorn[standard] \
-    httpx \
-    pyyaml \
-    python-dotenv
-
-# 4. Install daemon package in editable mode
-"$RUNTIME/venv/bin/pip" install -q -e "$PLUGIN_DIR"
-
-# 5. Scan and install plugin dependencies
-echo -e "${DIM}Checking plugin dependencies...${RESET}"
-
-for manifest in "$HOME/.claude/plugins"/**/skills_plugin/manifest.json; do
-    if [ -f "$manifest" ]; then
-        deps=$(jq -r '.dependencies[]? // empty' "$manifest" 2>/dev/null)
-        if [ -n "$deps" ]; then
-            echo "$deps" | while read dep; do
-                "$RUNTIME/venv/bin/pip" install -q "$dep" 2>/dev/null || true
-            done
-        fi
-    fi
-done
-
-echo -e "${GREEN}✓ Skills daemon setup complete${RESET}"
-echo -e "${DIM}Runtime: $RUNTIME${RESET}"
-```
-
----
-
-## Hot Plugin Installation
-
-### POST /install-plugin Endpoint
-
-For runtime plugin installation without daemon restart:
+### Startup Flow
 
 ```python
-@app.post("/install-plugin")
-async def install_plugin(manifest_path: str) -> dict:
-    """Install plugin dependencies and load plugin at runtime."""
+async def lifespan(app: FastAPI):
+    """Application lifecycle."""
 
-    # 1. Read manifest
-    manifest = json.loads(Path(manifest_path).read_text())
+    # 1. Ensure runtime directory exists
+    ensure_runtime_dirs()
 
-    # 2. Install dependencies
-    deps = manifest.get("dependencies", [])
-    if deps:
-        result = subprocess.run(
-            ["pip", "install", *deps],
-            capture_output=True,
-            text=True
-        )
-        if result.returncode != 0:
-            return {"success": False, "error": result.stderr}
+    # 2. Sync plugin dependencies
+    await sync_plugin_dependencies()
 
-    # 3. Load plugin
-    plugin_dir = Path(manifest_path).parent
-    load_plugin_from_path(plugin_dir / "__init__.py")
+    # 3. Normal startup
+    lifecycle.write_pid_file()
+    lifecycle.setup_signal_handlers()
 
-    # 4. Mount router
-    plugin = registry.get(manifest["name"])
-    if plugin:
-        app.include_router(plugin.router, prefix=f"/{plugin.name}")
+    # 4. Start plugins
+    for plugin in registry.all():
         await plugin.startup()
 
-    return {
-        "success": True,
-        "plugin": manifest["name"],
-        "dependencies_installed": deps
-    }
+    yield  # App runs
+
+    # Shutdown...
+```
+
+### Dependency Sync
+
+```python
+async def sync_plugin_dependencies():
+    """Install missing dependencies from plugin manifests."""
+
+    all_deps = set()
+
+    # Collect dependencies from all manifests
+    for manifest_path in discover_manifests():
+        manifest = json.loads(manifest_path.read_text())
+        deps = manifest.get("dependencies", [])
+        all_deps.update(deps)
+
+    if not all_deps:
+        return
+
+    # Check what's already installed
+    installed = get_installed_packages()
+    missing = [d for d in all_deps if not is_satisfied(d, installed)]
+
+    if missing:
+        logger.info(f"Installing dependencies: {missing}")
+        result = subprocess.run(
+            ["uv", "pip", "install", *missing],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            logger.error(f"Dependency install failed: {result.stderr}")
 ```
 
 ---
 
-## CLI Wrapper Template
+## Logging
 
-**Generic wrapper with auto-recovery:**
+### Configuration
 
-```bash
-#!/bin/bash
-# Template for ~/.local/bin/<command>
+- **Library:** structlog
+- **Location:** `~/.local/share/skills-daemon/logs/daemon.log`
+- **Rotation:** 5MB max, 3 backups
+- **Format:** JSON (file), human-readable (console)
 
-PLUGIN_NAME="jira"
-DAEMON_URL="http://127.0.0.1:9100"
-RUNTIME="$HOME/.local/share/skills-daemon"
+### Implementation
 
-ensure_daemon() {
-    # Quick health check
-    if curl -s --max-time 1 "$DAEMON_URL/health" | jq -e '.cwd_valid != false' >/dev/null 2>&1; then
-        return 0
-    fi
+```python
+import structlog
 
-    echo "Starting skills daemon..." >&2
+def setup_logging():
+    """Configure structlog for daemon."""
 
-    # Kill stale process
-    pkill -f "skills_daemon.main" 2>/dev/null || true
-    sleep 0.5
+    log_dir = Path.home() / ".local/share/skills-daemon/logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
 
-    # Start daemon
-    nohup "$RUNTIME/venv/bin/python" -m skills_daemon.main \
-        > /tmp/skills-daemon.log 2>&1 &
+    structlog.configure(
+        processors=[
+            structlog.stdlib.filter_by_level,
+            structlog.stdlib.add_logger_name,
+            structlog.stdlib.add_log_level,
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.processors.JSONRenderer(),
+        ],
+        wrapper_class=structlog.stdlib.BoundLogger,
+        context_class=dict,
+        logger_factory=structlog.stdlib.LoggerFactory(),
+    )
 
-    # Wait for ready
-    for i in {1..50}; do
-        sleep 0.1
-        curl -s "$DAEMON_URL/health" >/dev/null 2>&1 && return 0
-    done
+    # File handler with rotation
+    handler = RotatingFileHandler(
+        log_dir / "daemon.log",
+        maxBytes=5 * 1024 * 1024,
+        backupCount=3,
+    )
 
-    echo "Failed to start daemon. Check /tmp/skills-daemon.log" >&2
-    return 1
-}
-
-ensure_daemon || exit 1
-exec "$RUNTIME/venv/bin/python" -m cli.skills_client "$PLUGIN_NAME" "$@"
+    logging.basicConfig(
+        handlers=[handler],
+        level=logging.INFO,
+    )
 ```
 
 ---
 
-## Summary
+## Lazy Installation Flow
 
-### What Gets Created
+No explicit install command needed. First use triggers setup:
 
-| Component | Location | Purpose |
-|-----------|----------|---------|
-| Runtime venv | `~/.local/share/skills-daemon/venv/` | Stable Python environment |
-| CLI wrappers | `~/.local/bin/*` | User commands |
-| Plugin manifests | `skills_plugin/manifest.json` | Dependency declarations |
-| Install wrapper | `marketplace/scripts/install.sh` | Post-install hook runner |
-
-### User Experience
-
-**First install:**
-```bash
-$ sebastian-marketplace install skills-daemon
-Installing skills-daemon...
-Running post-install...
-Creating virtual environment...
-Installing dependencies...
-✓ Post-install completed
-✓ Created CLI: skills-daemon
-✓ Created CLI: skills-client
-✓ skills-daemon installed successfully
 ```
-
-**First use (auto-starts daemon):**
-```bash
-$ jira search "assignee = currentUser()"
-Starting skills daemon...
-PROJ-123  Open    Fix login bug
-PROJ-456  Done    Update docs
-```
-
-**After plugin update (auto-recovers):**
-```bash
-$ jira search "project = PROJ"
-Recovering daemon...
-PROJ-123  Open    Fix login bug
+User runs: jira search "project = PROJ"
+                │
+                ▼
+        skills-client jira search ...
+                │
+                ▼
+        ensure_runtime()
+        ┌───────────────────────────────────┐
+        │ ~/.local/share/skills-daemon/     │
+        │ exists?                           │
+        │   No → Create dirs                │
+        └───────────────────────────────────┘
+                │
+                ▼
+        ensure_venv()
+        ┌───────────────────────────────────┐
+        │ venv exists and valid?            │
+        │   No → uv venv + install deps     │
+        └───────────────────────────────────┘
+                │
+                ▼
+        ensure_daemon()
+        ┌───────────────────────────────────┐
+        │ Daemon running and healthy?       │
+        │   No → Start daemon               │
+        │   Unhealthy → Recover + restart   │
+        └───────────────────────────────────┘
+                │
+                ▼
+        HTTP request to daemon
+                │
+                ▼
+        Return result to user
 ```
 
 ---
 
 ## Implementation Checklist
 
+### Phase 1: Runtime Infrastructure
 - [ ] Create `~/.local/share/skills-daemon/` structure
 - [ ] Move venv to stable location
-- [ ] Add `manifest.json` schema for plugins
-- [ ] Create `manifest.json` for jira plugin
-- [ ] Create `manifest.json` for serena plugin
-- [ ] Add `cwd_valid` to /health endpoint
-- [ ] Create marketplace `install.sh` wrapper
-- [ ] Create `scripts/setup.sh` for skills-daemon
-- [ ] Update `plugin.json` with new fields
-- [ ] Create CLI wrapper template
-- [ ] Update existing CLI wrappers with auto-recovery
-- [ ] Test full install flow
+- [ ] Add structlog logging
+- [ ] Add `cwd_valid` / `venv_valid` to /health
+
+### Phase 2: Dependency Management
+- [ ] Create manifest.json schema
+- [ ] Add manifest.json to jira plugin
+- [ ] Add manifest.json to serena plugin
+- [ ] Implement `sync_plugin_dependencies()`
+- [ ] Test dependency installation on startup
+
+### Phase 3: CLI Help Generation
+- [ ] Add `GET /{plugin}/help` endpoint
+- [ ] Add `GET /{plugin}/commands` endpoint
+- [ ] Implement help text formatter
+- [ ] Update skills-client to handle --help
+- [ ] Test help generation
+
+### Phase 4: Self-Healing
+- [ ] Implement `check_cwd_valid()`
+- [ ] Implement `check_venv_valid()`
+- [ ] Add recovery logic to skills-client
 - [ ] Test recovery from stale state
-- [ ] Document for users
+
+### Phase 5: CLI Wrappers
+- [ ] Simplify jira wrapper (delegate to skills-client)
+- [ ] Simplify serena wrapper (delegate to skills-client)
+- [ ] Update skills-daemon wrapper
+- [ ] Test all CLI entry points
+
+### Phase 6: Documentation
+- [ ] Update README with new architecture
+- [ ] Document manifest.json format
+- [ ] Add troubleshooting guide
+
+---
+
+## Summary
+
+| Component | Decision |
+|-----------|----------|
+| **Dependency declaration** | manifest.json in skills_plugin/ |
+| **CLI help source** | Generated from FastAPI (single source of truth) |
+| **SKILL.md purpose** | AI instructions for Claude (unchanged) |
+| **Installation flow** | Lazy setup on first use |
+| **Runtime location** | ~/.local/share/skills-daemon/ |
+| **Logging** | structlog to ~/.local/share/skills-daemon/logs/ |
+| **Self-healing** | Client-side detection + recovery |
+| **CLI wrappers** | Trivial, delegate to skills-client |
+| **Daemon hooks** | Not needed (YAGNI) |
