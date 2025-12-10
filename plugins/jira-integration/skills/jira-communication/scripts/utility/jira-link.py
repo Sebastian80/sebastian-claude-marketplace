@@ -105,6 +105,253 @@ def create(ctx, from_key: str, to_key: str, link_type: str, dry_run: bool):
         sys.exit(1)
 
 
+@cli.command('weblink')
+@click.argument('issue_key')
+@click.argument('url')
+@click.option('--title', '-t', help='Link title (defaults to URL)')
+@click.option('--icon', help='Icon URL for the link')
+@click.option('--dry-run', is_flag=True, help='Show what would be created')
+@click.pass_context
+def weblink(ctx, issue_key: str, url: str, title: str | None, icon: str | None, dry_run: bool):
+    """Add a web link (remote link) to an issue.
+
+    ISSUE_KEY: The issue to add the link to
+
+    URL: The URL to link to
+
+    Examples:
+
+      jira-link weblink PROJ-123 https://github.com/org/repo/issues/42
+
+      jira-link weblink PROJ-123 https://github.com/org/repo/issues/42 --title "GitHub Issue #42"
+
+      jira-link weblink PROJ-123 https://example.com --title "Documentation" --icon "https://example.com/favicon.ico"
+    """
+    client = ctx.obj['client']
+    link_title = title or url
+
+    if dry_run:
+        warning("DRY RUN - No link will be created")
+        print(f"\nWould create web link:")
+        print(f"  Issue: {issue_key}")
+        print(f"  URL: {url}")
+        print(f"  Title: {link_title}")
+        if icon:
+            print(f"  Icon: {icon}")
+        return
+
+    try:
+        # Build the remote link payload
+        link_object = {
+            "url": url,
+            "title": link_title
+        }
+        if icon:
+            link_object["icon"] = {"url16x16": icon}
+
+        # Use the underlying session to call the remote link API
+        endpoint = f"rest/api/2/issue/{issue_key}/remotelink"
+        response = client._session.post(
+            f"{client.url}/{endpoint}",
+            json={"object": link_object}
+        )
+        response.raise_for_status()
+        result = response.json()
+
+        if ctx.obj['json']:
+            format_output({
+                'issue': issue_key,
+                'url': url,
+                'title': link_title,
+                'id': result.get('id'),
+                'created': True
+            }, as_json=True)
+        elif ctx.obj['quiet']:
+            print(result.get('id', 'ok'))
+        else:
+            success(f"Added web link to {issue_key}: {link_title}")
+            print(f"  URL: {url}")
+
+    except Exception as e:
+        if ctx.obj['debug']:
+            raise
+        error(f"Failed to add web link: {e}")
+        sys.exit(1)
+
+
+@cli.command('weblinks')
+@click.argument('issue_key')
+@click.pass_context
+def weblinks(ctx, issue_key: str):
+    """List all web links (remote links) on an issue.
+
+    ISSUE_KEY: The issue to list links for
+
+    Example:
+
+      jira-link weblinks PROJ-123
+    """
+    client = ctx.obj['client']
+
+    try:
+        endpoint = f"rest/api/2/issue/{issue_key}/remotelink"
+        response = client._session.get(f"{client.url}/{endpoint}")
+        response.raise_for_status()
+        links = response.json()
+
+        if ctx.obj['json']:
+            format_output(links, as_json=True)
+        elif ctx.obj['quiet']:
+            for link in links:
+                print(link.get('id', ''))
+        else:
+            if not links:
+                print(f"No web links on {issue_key}")
+                return
+
+            print(f"Web links on {issue_key}:\n")
+            rows = []
+            for link in links:
+                obj = link.get('object', {})
+                rows.append({
+                    'ID': str(link.get('id', '')),
+                    'Title': obj.get('title', ''),
+                    'URL': obj.get('url', '')
+                })
+            print(format_table(rows, ['ID', 'Title', 'URL']))
+
+    except Exception as e:
+        if ctx.obj['debug']:
+            raise
+        error(f"Failed to get web links: {e}")
+        sys.exit(1)
+
+
+@cli.command('weblink-remove')
+@click.argument('issue_key')
+@click.argument('link_id')
+@click.option('--dry-run', is_flag=True, help='Show what would be removed')
+@click.pass_context
+def weblink_remove(ctx, issue_key: str, link_id: str, dry_run: bool):
+    """Remove a web link from an issue.
+
+    ISSUE_KEY: The issue containing the link
+
+    LINK_ID: The ID of the link to remove (use 'weblinks' command to find IDs)
+
+    Example:
+
+      jira-link weblink-remove PROJ-123 12345
+    """
+    client = ctx.obj['client']
+
+    if dry_run:
+        warning("DRY RUN - No link will be removed")
+        print(f"\nWould remove web link {link_id} from {issue_key}")
+        return
+
+    try:
+        endpoint = f"rest/api/2/issue/{issue_key}/remotelink/{link_id}"
+        response = client._session.delete(f"{client.url}/{endpoint}")
+        response.raise_for_status()
+
+        if ctx.obj['json']:
+            format_output({
+                'issue': issue_key,
+                'id': link_id,
+                'removed': True
+            }, as_json=True)
+        elif ctx.obj['quiet']:
+            print('ok')
+        else:
+            success(f"Removed web link {link_id} from {issue_key}")
+
+    except Exception as e:
+        if ctx.obj['debug']:
+            raise
+        error(f"Failed to remove web link: {e}")
+        sys.exit(1)
+
+
+@cli.command('weblink-update')
+@click.argument('issue_key')
+@click.argument('link_id')
+@click.option('--url', help='New URL')
+@click.option('--title', '-t', help='New title')
+@click.option('--icon', help='New icon URL')
+@click.option('--dry-run', is_flag=True, help='Show what would be updated')
+@click.pass_context
+def weblink_update(ctx, issue_key: str, link_id: str, url: str | None, title: str | None, icon: str | None, dry_run: bool):
+    """Update a web link on an issue.
+
+    ISSUE_KEY: The issue containing the link
+
+    LINK_ID: The ID of the link to update (use 'weblinks' command to find IDs)
+
+    Examples:
+
+      jira-link weblink-update PROJ-123 12345 --title "New Title"
+
+      jira-link weblink-update PROJ-123 12345 --url "https://new-url.com" --title "Updated"
+    """
+    client = ctx.obj['client']
+
+    if not any([url, title, icon]):
+        error("At least one of --url, --title, or --icon must be specified")
+        sys.exit(1)
+
+    try:
+        # First get the existing link
+        endpoint = f"rest/api/2/issue/{issue_key}/remotelink/{link_id}"
+        response = client._session.get(f"{client.url}/{endpoint}")
+        response.raise_for_status()
+        existing = response.json()
+
+        # Build updated object
+        link_object = existing.get('object', {})
+        if url:
+            link_object['url'] = url
+        if title:
+            link_object['title'] = title
+        if icon:
+            link_object['icon'] = {'url16x16': icon}
+
+        if dry_run:
+            warning("DRY RUN - No link will be updated")
+            print(f"\nWould update web link {link_id} on {issue_key}:")
+            print(f"  URL: {link_object.get('url', '')}")
+            print(f"  Title: {link_object.get('title', '')}")
+            return
+
+        # Update the link
+        response = client._session.put(
+            f"{client.url}/{endpoint}",
+            json={"object": link_object}
+        )
+        response.raise_for_status()
+
+        if ctx.obj['json']:
+            format_output({
+                'issue': issue_key,
+                'id': link_id,
+                'url': link_object.get('url'),
+                'title': link_object.get('title'),
+                'updated': True
+            }, as_json=True)
+        elif ctx.obj['quiet']:
+            print('ok')
+        else:
+            success(f"Updated web link {link_id} on {issue_key}")
+            print(f"  Title: {link_object.get('title', '')}")
+            print(f"  URL: {link_object.get('url', '')}")
+
+    except Exception as e:
+        if ctx.obj['debug']:
+            raise
+        error(f"Failed to update web link: {e}")
+        sys.exit(1)
+
+
 @cli.command('list-types')
 @click.pass_context
 def list_types(ctx):
