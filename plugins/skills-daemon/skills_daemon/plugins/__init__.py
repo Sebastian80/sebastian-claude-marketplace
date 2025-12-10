@@ -12,7 +12,7 @@ class SkillPlugin(ABC):
     """Base class for skill plugins.
 
     Each plugin provides:
-    - A name (used in URL prefix: /serena/, /jira/)
+    - A name (used in URL prefix: /<plugin>/)
     - A FastAPI router with endpoints
     - Optional startup/shutdown hooks
     """
@@ -61,6 +61,16 @@ class PluginRegistry:
     def register(self, plugin: SkillPlugin) -> None:
         """Register a plugin."""
         self._plugins[plugin.name] = plugin
+
+    def unregister(self, name: str) -> Optional[SkillPlugin]:
+        """Unregister a plugin by name."""
+        return self._plugins.pop(name, None)
+
+    def clear(self) -> list[str]:
+        """Clear all plugins. Returns list of removed plugin names."""
+        names = list(self._plugins.keys())
+        self._plugins.clear()
+        return names
 
     def get(self, name: str) -> Optional[SkillPlugin]:
         """Get plugin by name."""

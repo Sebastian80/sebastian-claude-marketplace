@@ -3,7 +3,7 @@
 Skills daemon control CLI.
 
 Usage:
-    skills-daemon start|stop|status|restart|logs
+    skills-daemon start|stop|status|restart|reload|logs
 """
 
 import json
@@ -148,6 +148,40 @@ def cmd_logs():
     return 0
 
 
+def cmd_reload():
+    """Hot-reload plugins without restarting daemon."""
+    if not is_running():
+        print(f"{RED}Daemon not running{RESET}")
+        return 1
+
+    print(f"{DIM}Reloading plugins...{RESET}")
+    try:
+        req = urllib.request.Request(f"{DAEMON_URL}/reload-plugins", method="POST")
+        with urllib.request.urlopen(req, timeout=10) as r:
+            result = json.loads(r.read().decode())
+
+        if result.get("success"):
+            added = result.get("added", [])
+            removed = result.get("removed", [])
+            reloaded = result.get("reloaded", [])
+            total = result.get("total", 0)
+
+            print(f"{GREEN}Plugins reloaded{RESET} ({total} total)")
+            if added:
+                print(f"  {GREEN}Added:{RESET} {', '.join(added)}")
+            if removed:
+                print(f"  {YELLOW}Removed:{RESET} {', '.join(removed)}")
+            if reloaded:
+                print(f"  {DIM}Reloaded:{RESET} {', '.join(reloaded)}")
+            return 0
+        else:
+            print(f"{RED}Reload failed:{RESET} {result.get('error', 'Unknown error')}")
+            return 1
+    except Exception as e:
+        print(f"{RED}Error:{RESET} {e}")
+        return 1
+
+
 def main():
     args = sys.argv[1:]
     if not args or args[0] in ("--help", "-h"):
@@ -159,11 +193,12 @@ def main():
     stop        Stop daemon
     status      Show status
     restart     Restart daemon
+    reload      Hot-reload plugins (no restart)
     logs        Tail logs
 """)
         return 0
 
-    cmds = {"start": cmd_start, "stop": cmd_stop, "status": cmd_status, "restart": cmd_restart, "logs": cmd_logs}
+    cmds = {"start": cmd_start, "stop": cmd_stop, "status": cmd_status, "restart": cmd_restart, "reload": cmd_reload, "logs": cmd_logs}
     if args[0] not in cmds:
         print(f"{RED}Unknown command:{RESET} {args[0]}")
         return 1

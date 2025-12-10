@@ -1,8 +1,8 @@
 """
 Skills Daemon - Central daemon for Claude Code skills.
 
-Provides a FastAPI-based HTTP server with plugin architecture
-for multiple skill backends (Serena, Jira, JetBrains, etc.)
+Provides a FastAPI-based HTTP server with plugin architecture.
+Plugins are auto-discovered and provide their own endpoints.
 """
 
 __version__ = "1.0.0"

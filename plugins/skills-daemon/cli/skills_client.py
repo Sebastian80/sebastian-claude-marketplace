@@ -4,9 +4,10 @@ Unified thin client for skills daemon.
 Uses only stdlib for fast startup (~10ms).
 
 Usage:
-    skills-client serena find Customer --kind class
-    skills-client jira issue HMKG-123
-    skills-client --json serena status
+    skills-client <plugin> <command> [--param value]
+    skills-client --json <plugin> <command>
+    skills-client health
+    skills-client plugins
 """
 
 import fcntl
@@ -355,16 +356,18 @@ def main():
 
 {BOLD}Usage:{RESET}
     skills-client <plugin> <command> [args...]
+    skills-client health
+    skills-client plugins
 
-{BOLD}Plugins:{RESET}
-    serena      Semantic code navigation
-    jira        Jira (coming soon)
-    jetbrains   JetBrains IDE (coming soon)
+{BOLD}Options:{RESET}
+    --json      Output raw JSON
+    --help      Show this help
 
 {BOLD}Examples:{RESET}
-    skills-client serena find Customer --kind class
-    skills-client serena status
-    skills-client --json serena find Controller
+    skills-client health                       # Daemon health
+    skills-client plugins                      # List available plugins
+    skills-client <plugin> <command> --param   # Call plugin endpoint
+    skills-client --json <plugin> <command>    # JSON output
 """)
         return
 

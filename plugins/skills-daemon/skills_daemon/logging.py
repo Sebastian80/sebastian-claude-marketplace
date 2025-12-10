@@ -1,15 +1,26 @@
 """
 Structured logging for skills daemon.
+
+Features:
+- JSON-formatted log entries for file output
+- Log rotation (5MB max, 3 backups)
+- Async logging via QueueHandler (non-blocking I/O)
 """
 
+import atexit
 import json
 import logging
+import logging.handlers
+import queue
 import sys
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from . import LOG_FILE
+
+# Log rotation settings
+MAX_BYTES = 5 * 1024 * 1024  # 5MB
+BACKUP_COUNT = 3
 
 
 class StructuredFormatter(logging.Formatter):
@@ -37,13 +48,20 @@ class StructuredFormatter(logging.Formatter):
 
 
 class DaemonLogger:
-    """Logger for daemon operations with file and console output."""
+    """Logger for daemon operations with file and console output.
+
+    Features:
+    - Console: human-readable format
+    - File: JSON format with rotation (5MB, 3 backups)
+    - Async: QueueHandler for non-blocking I/O
+    """
 
     def __init__(self, name: str = "skills-daemon"):
         self.logger = logging.getLogger(name)
         self.logger.setLevel(logging.INFO)
+        self._queue_listener = None
 
-        # Console handler (human-readable)
+        # Console handler (human-readable, direct)
         console = logging.StreamHandler(sys.stdout)
         console.setFormatter(logging.Formatter(
             "%(asctime)s [%(levelname)s] %(message)s",
@@ -51,13 +69,37 @@ class DaemonLogger:
         ))
         self.logger.addHandler(console)
 
-        # File handler (JSON)
+        # File handler with rotation + async queue
         try:
-            file_handler = logging.FileHandler(LOG_FILE)
+            # Create rotating file handler
+            file_handler = logging.handlers.RotatingFileHandler(
+                LOG_FILE,
+                maxBytes=MAX_BYTES,
+                backupCount=BACKUP_COUNT,
+            )
             file_handler.setFormatter(StructuredFormatter())
-            self.logger.addHandler(file_handler)
+
+            # Wrap in QueueHandler for async logging
+            log_queue = queue.Queue(-1)  # Unlimited queue
+            queue_handler = logging.handlers.QueueHandler(log_queue)
+            self.logger.addHandler(queue_handler)
+
+            # Start listener thread to process queue
+            self._queue_listener = logging.handlers.QueueListener(
+                log_queue, file_handler, respect_handler_level=True
+            )
+            self._queue_listener.start()
+
+            # Ensure cleanup on exit
+            atexit.register(self._shutdown)
+
         except (OSError, PermissionError):
             pass  # Skip file logging if not writable
+
+    def _shutdown(self) -> None:
+        """Stop the queue listener on shutdown."""
+        if self._queue_listener:
+            self._queue_listener.stop()
 
     def log(self, level: str, event: str, **context: Any) -> None:
         """Log with structured context."""

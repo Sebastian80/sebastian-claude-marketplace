@@ -1,6 +1,6 @@
 # Skills Daemon
 
-Central FastAPI-based daemon for Claude Code skills. Provides a unified HTTP interface with plugin architecture for multiple skill backends (Serena, Jira, JetBrains, etc.).
+Central FastAPI-based daemon for Claude Code skills. Provides a unified HTTP interface with plugin architecture for skill backends.
 
 ## Features
 
@@ -10,15 +10,14 @@ Central FastAPI-based daemon for Claude Code skills. Provides a unified HTTP int
 - **Auto-generated API Docs** - Swagger UI at `/docs`, OpenAPI spec at `/openapi.json`
 - **Lifecycle Management** - Auto-start on first use, auto-stop after 30min idle
 - **Structured Logging** - JSON logs to `/tmp/skills-daemon.log`
+- **Output Formatting** - Pluggable formatters (human, json, ai, markdown)
 
 ## Architecture
 
 ```
 CLI Entry Points
 ┌─────────────────────────────────────────────────────────────────────┐
-│ ~/.local/bin/serena      → skills-client serena ...                 │
-│ ~/.local/bin/jira        → skills-client jira ...      (future)     │
-│ ~/.local/bin/jetbrains   → skills-client jetbrains ... (future)     │
+│ ~/.local/bin/<plugin>  → skills-client <plugin> ...                 │
 └─────────────────────────────────────────────────────────────────────┘
                          ↓ HTTP :9100
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -31,16 +30,11 @@ CLI Entry Points
 │   └── POST /shutdown        Graceful shutdown                       │
 │                                                                     │
 │   Plugin Routes (auto-mounted):                                     │
-│   ├── /serena/*             Semantic code navigation                │
-│   ├── /jira/*               Jira integration (future)               │
-│   └── /jetbrains/*          JetBrains IDE (future)                  │
+│   └── /<plugin>/*           Plugin-specific endpoints               │
 └─────────────────────────────────────────────────────────────────────┘
                          ↓
 ┌─────────────────────────────────────────────────────────────────────┐
-│ Backend Services                                                    │
-│   ├── Serena MCP Server (:9121)   30+ language servers              │
-│   ├── Jira REST API               (future)                          │
-│   └── JetBrains IDE (:63342)      (future)                          │
+│ Backend Services (plugin-specific)                                  │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -50,10 +44,11 @@ CLI Entry Points
 # Check daemon health
 skills-client health
 
-# Use Serena via the daemon
-serena status
-serena find --pattern Customer --kind class
-serena refs --symbol "Customer/getName" --file src/Entity/Customer.php
+# List available plugins
+skills-client plugins
+
+# Use a plugin
+skills-client <plugin> <command> [--param value]
 
 # View API documentation
 curl http://127.0.0.1:9100/docs
@@ -64,7 +59,7 @@ curl http://127.0.0.1:9100/docs
 The daemon uses `uv` for fast venv setup:
 
 ```bash
-cd ~/.claude/plugins/marketplaces/sebastian-marketplace/skills-daemon
+cd ~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/skills-daemon
 
 # Automatic setup (via skills-daemon wrapper)
 skills-daemon start
@@ -94,17 +89,15 @@ skills-client <plugin> <command> [--param value ...]
 # Examples
 skills-client health                           # Daemon health
 skills-client plugins                          # List plugins
-skills-client serena find --pattern Customer   # Find symbols
-skills-client serena refs --symbol X --file f  # Find references
-skills-client --json serena status             # JSON output
+skills-client --json <plugin> <command>        # JSON output
 ```
 
 Individual CLI wrappers route to `skills-client`:
 
 ```bash
 # These are equivalent:
-serena find --pattern Customer
-skills-client serena find --pattern Customer
+<plugin> <command>
+skills-client <plugin> <command>
 ```
 
 ## API Documentation
@@ -126,6 +119,7 @@ skills-daemon/
 │   ├── main.py                 # FastAPI app, plugin discovery
 │   ├── lifecycle.py            # PID, signals, idle timeout
 │   ├── logging.py              # Structured JSON logging
+│   ├── formatters.py           # Output formatters (human, json, ai, markdown)
 │   └── plugins/
 │       └── __init__.py         # SkillPlugin ABC + registry
 ├── cli/
@@ -149,8 +143,9 @@ Plugins are auto-discovered from `~/.claude/plugins/**/skills_plugin/` directori
 Create a `skills_plugin/__init__.py` in your skill's scripts directory:
 
 ```python
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from skills_daemon.plugins import SkillPlugin
+from skills_daemon.formatters import format_response, get_formatter
 
 class MyPlugin(SkillPlugin):
     @property
@@ -166,13 +161,14 @@ class MyPlugin(SkillPlugin):
         router = APIRouter()
 
         @router.get("/status")
-        async def status():
-            return {"success": True, "data": {"status": "ok"}}
+        async def status(format: str = Query("json")):
+            data = {"status": "ok"}
+            return formatted_response(data, format)
 
         @router.post("/action")
-        async def action(param: str):
+        async def action(param: str, format: str = Query("json")):
             result = do_something(param)
-            return {"success": True, "data": result}
+            return formatted_response(result, format)
 
         return router
 
@@ -189,17 +185,49 @@ class MyPlugin(SkillPlugin):
         return {"status": "ok"}
 ```
 
+### Custom Formatters
+
+Plugins can register custom formatters for their data types:
+
+```python
+# In skills_plugin/formatters.py
+from skills_daemon.formatters import HumanFormatter, AIFormatter, registry
+
+class MyDataHumanFormatter(HumanFormatter):
+    def format(self, data):
+        # Custom formatting logic
+        return formatted_string
+
+# Register with daemon
+registry.register("myplugin", "mydata:human", MyDataHumanFormatter)
+registry.register("myplugin", "mydata:ai", MyDataAIFormatter)
+```
+
 ### Plugin Response Format
 
 Plugins should return responses in this format:
 
 ```python
-# Success
+# Success (JSON)
 {"success": True, "data": <result>}
 
-# Error
+# Error (JSON)
 {"success": False, "error": "message", "hint": "optional hint"}
+
+# Formatted (PlainTextResponse for human/ai/markdown)
+PlainTextResponse(content=formatted_string)
 ```
+
+### Output Formats
+
+Plugins can support multiple output formats via `?format=` parameter:
+
+| Format | Use Case | Content-Type |
+|--------|----------|--------------|
+| `json` | Programmatic use | application/json |
+| `human` | Terminal with colors | text/plain |
+| `ai` | LLM consumption | text/plain |
+| `markdown` | Documentation | text/plain |
 
 ## Configuration
 
@@ -210,26 +238,6 @@ Plugins should return responses in this format:
 | PID file | `/tmp/skills-daemon.pid` | `skills_daemon/__init__.py` |
 | Log file | `/tmp/skills-daemon.log` | `skills_daemon/__init__.py` |
 | Log level | INFO | `skills_daemon/logging.py` |
-
-## Registered Plugins
-
-### Serena Plugin
-
-Location: `~/.claude/plugins/.../serena-integration/skills/serena/scripts/skills_plugin/`
-
-Provides semantic code navigation via Serena MCP server:
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/serena/status` | GET | Project status |
-| `/serena/activate` | POST | Activate project |
-| `/serena/find` | GET | Find symbols |
-| `/serena/refs` | GET | Find references |
-| `/serena/overview` | GET | File structure |
-| `/serena/search` | GET | Regex search |
-| `/serena/recipe` | GET | Pre-built searches |
-| `/serena/memory/*` | GET/POST/DELETE | Memory operations |
-| `/serena/edit/*` | POST | Symbol-based editing |
 
 ## Troubleshooting
 
@@ -257,13 +265,13 @@ cat /tmp/skills-daemon.log | jq .
 
 ```bash
 curl http://127.0.0.1:9100/health
-# Returns: {"status":"running","version":"1.0.0","plugins":["serena"],...}
+# Returns: {"status":"running","version":"1.0.0","plugins":[...],...}
 ```
 
 ## Development
 
 ```bash
-cd ~/.claude/plugins/marketplaces/sebastian-marketplace/skills-daemon
+cd ~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/skills-daemon
 
 # Install dev dependencies
 uv pip install -e ".[dev]"
@@ -274,7 +282,6 @@ PYTHONPATH="$PWD" .venv/bin/python -m skills_daemon.main
 # Test endpoints
 curl http://127.0.0.1:9100/health
 curl http://127.0.0.1:9100/plugins
-curl "http://127.0.0.1:9100/serena/find?pattern=Customer"
 ```
 
 ## Dependencies
@@ -286,11 +293,12 @@ uvicorn[standard]>=0.27.0  # ASGI server
 httpx>=0.26.0         # Async HTTP client
 ```
 
-## Future Plugins
+## Plugin Documentation
 
-| Plugin | Backend | Status |
-|--------|---------|--------|
-| serena | Serena MCP Server | Active |
-| jira | Jira REST API | Planned |
-| jetbrains | JetBrains Gateway | Planned |
-| github | GitHub API | Planned |
+Each plugin provides its own README with:
+- Available endpoints
+- CLI commands
+- Configuration options
+- Usage examples
+
+See the plugin's directory: `~/.claude/plugins/**/skills_plugin/README.md`

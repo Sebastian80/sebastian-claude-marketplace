@@ -75,7 +75,7 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app
 app = FastAPI(
     title="Skills Daemon",
-    description="Central daemon for Claude Code skills (Serena, Jira, JetBrains, etc.)",
+    description="Central daemon for Claude Code skills with plugin architecture",
     version=__version__,
     lifespan=lifespan,
 )
@@ -168,6 +168,70 @@ async def shutdown() -> dict[str, Any]:
     if lifecycle:
         lifecycle.shutdown_event.set()
     return {"success": True, "message": "Shutdown initiated"}
+
+
+@app.post("/reload-plugins")
+async def reload_plugins() -> dict[str, Any]:
+    """Hot-reload plugins without restarting daemon.
+
+    - Discovers new plugins and mounts them
+    - Calls shutdown() on removed plugins
+    - Updates plugin registry
+    """
+    old_plugins = set(registry.names())
+
+    # Remove plugin routes from app (routes starting with /<plugin_name>/)
+    plugin_prefixes = [f"/{name}" for name in old_plugins]
+    app.routes[:] = [
+        route for route in app.routes
+        if not any(
+            hasattr(route, 'path') and route.path.startswith(prefix)
+            for prefix in plugin_prefixes
+        )
+    ]
+
+    # Shutdown old plugins
+    for name in old_plugins:
+        plugin = registry.get(name)
+        if plugin:
+            try:
+                await plugin.shutdown()
+            except Exception as e:
+                logger.warning(f"Error shutting down plugin {name}: {e}")
+
+    # Clear registry and re-discover
+    registry.clear()
+    discover_and_register_plugins()
+
+    # Mount new plugin routers
+    mount_plugin_routers(app)
+
+    # Startup new plugins
+    for plugin in registry.all():
+        try:
+            await plugin.startup()
+        except Exception as e:
+            logger.warning(f"Error starting plugin {plugin.name}: {e}")
+
+    new_plugins = set(registry.names())
+    added = new_plugins - old_plugins
+    removed = old_plugins - new_plugins
+    unchanged = old_plugins & new_plugins
+
+    logger.info(
+        "Plugins reloaded",
+        added=list(added),
+        removed=list(removed),
+        total=len(new_plugins),
+    )
+
+    return {
+        "success": True,
+        "added": list(added),
+        "removed": list(removed),
+        "reloaded": list(unchanged),
+        "total": len(new_plugins),
+    }
 
 
 def discover_and_register_plugins() -> None:
