@@ -9,8 +9,10 @@ Usage:
     skills-client --json serena status
 """
 
+import fcntl
 import json
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -21,7 +23,9 @@ from pathlib import Path
 
 # Configuration
 DAEMON_URL = "http://127.0.0.1:9100"
+DAEMON_PORT = 9100
 PID_FILE = "/tmp/skills-daemon.pid"
+LOCK_FILE = "/tmp/skills-daemon.lock"
 TIMEOUT = 30
 
 # ANSI colors
@@ -31,8 +35,34 @@ RED, GREEN, YELLOW, CYAN, DIM, BOLD, RESET = (
 )
 
 
+def is_port_in_use(port: int = DAEMON_PORT) -> bool:
+    """Check if daemon port is in use by attempting to bind (most reliable)."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind(("127.0.0.1", port))
+            return False  # Bind succeeded = port is free
+        except OSError:
+            return True  # Bind failed = port is in use
+
+
+def is_daemon_healthy() -> bool:
+    """Check if daemon is responding to health checks."""
+    try:
+        urllib.request.urlopen(f"{DAEMON_URL}/health", timeout=1)
+        return True
+    except Exception:
+        return False
+
+
 def is_daemon_running() -> bool:
-    """Check if daemon is running."""
+    """Check if daemon is running via port + health check or PID file."""
+    # Primary: port in use AND responding to health
+    if is_port_in_use():
+        if is_daemon_healthy():
+            return True
+        # Port in use but not healthy - might be starting up or zombie
+        # Fall through to PID check
+    # Fallback: check PID file
     try:
         pid = int(Path(PID_FILE).read_text().strip())
         os.kill(pid, 0)
@@ -41,43 +71,102 @@ def is_daemon_running() -> bool:
         return False
 
 
-def start_daemon() -> bool:
-    """Start the daemon in background."""
-    print(f"{DIM}Starting skills daemon...{RESET}", file=sys.stderr)
-
-    skills_daemon = Path(__file__).parent.parent
-    venv_python = skills_daemon / ".venv" / "bin" / "python"
-    if not venv_python.exists():
-        venv_python = Path(sys.executable)
-
+def cleanup_stale_daemon() -> None:
+    """Kill any daemon process that's not responding on the expected port."""
     try:
-        env = os.environ.copy()
-        env["PYTHONPATH"] = str(skills_daemon)
-        subprocess.Popen(
-            [str(venv_python), "-m", "skills_daemon.main"],
-            cwd=str(skills_daemon),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-            env=env,
-        )
-        for _ in range(30):
-            time.sleep(0.1)
-            if is_daemon_running():
-                try:
-                    urllib.request.urlopen(f"{DAEMON_URL}/health", timeout=1)
+        pid = int(Path(PID_FILE).read_text().strip())
+        # Check if process exists but port is not responding
+        try:
+            os.kill(pid, 0)  # Process exists
+            if not is_port_in_use():
+                # Process exists but not listening - kill it
+                print(f"{YELLOW}Cleaning up stale daemon (PID {pid})...{RESET}", file=sys.stderr)
+                os.kill(pid, 9)  # SIGKILL
+                time.sleep(0.2)
+        except ProcessLookupError:
+            pass  # Process doesn't exist
+        # Clean up PID file
+        Path(PID_FILE).unlink(missing_ok=True)
+    except (FileNotFoundError, ValueError):
+        pass
+
+
+def start_daemon() -> bool:
+    """Start the daemon in background with lock protection."""
+    # Quick check - if port is already in use, daemon is running
+    if is_port_in_use():
+        return True
+
+    # Use lockfile to prevent race condition
+    lock_path = Path(LOCK_FILE)
+    try:
+        lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR)
+        try:
+            # Try to acquire exclusive lock (non-blocking)
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            # Another process is starting the daemon, wait for it
+            print(f"{DIM}Waiting for daemon startup...{RESET}", file=sys.stderr)
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)  # Blocking wait
+            os.close(lock_fd)
+            # After lock acquired, daemon should be running
+            for _ in range(30):
+                if is_port_in_use():
                     return True
-                except Exception:
-                    pass
-        return False
+                time.sleep(0.1)
+            return False
+
+        # We have the lock - check again if daemon started while waiting
+        if is_port_in_use():
+            os.close(lock_fd)
+            return True
+
+        # Clean up any stale state
+        cleanup_stale_daemon()
+
+        print(f"{DIM}Starting skills daemon...{RESET}", file=sys.stderr)
+
+        skills_daemon = Path(__file__).parent.parent
+        venv_python = skills_daemon / ".venv" / "bin" / "python"
+        if not venv_python.exists():
+            venv_python = Path(sys.executable)
+
+        try:
+            env = os.environ.copy()
+            env["PYTHONPATH"] = str(skills_daemon)
+            subprocess.Popen(
+                [str(venv_python), "-m", "skills_daemon.main"],
+                cwd=str(skills_daemon),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+                env=env,
+            )
+            # Wait for daemon to start (check port, not PID file)
+            for _ in range(50):  # 5 seconds max
+                time.sleep(0.1)
+                if is_port_in_use():
+                    try:
+                        urllib.request.urlopen(f"{DAEMON_URL}/health", timeout=1)
+                        return True
+                    except Exception:
+                        pass
+            return False
+        except Exception as e:
+            print(f"{RED}Error:{RESET} {e}", file=sys.stderr)
+            return False
+        finally:
+            os.close(lock_fd)
     except Exception as e:
-        print(f"{RED}Error:{RESET} {e}", file=sys.stderr)
+        print(f"{RED}Lock error:{RESET} {e}", file=sys.stderr)
         return False
 
 
 def ensure_daemon() -> bool:
-    """Ensure daemon is running."""
-    return is_daemon_running() or start_daemon()
+    """Ensure daemon is running and healthy."""
+    if is_port_in_use() and is_daemon_healthy():
+        return True
+    return start_daemon()
 
 
 def request(path: str, params: dict, method: str = "GET") -> dict:
