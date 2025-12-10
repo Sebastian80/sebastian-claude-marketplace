@@ -265,6 +265,28 @@ class SerenaPlugin(SkillPlugin):
             result = await c.memory_stats()
             return success_response(result)
 
+        # Onboarding endpoints
+        @router.get("/check_onboarding")
+        async def check_onboarding():
+            """Check if project onboarding was performed."""
+            c = await get_client()
+            result = await c.check_onboarding()
+            return success_response(result)
+
+        @router.get("/onboarding")
+        async def onboarding():
+            """Get onboarding instructions for new project."""
+            c = await get_client()
+            result = await c.onboarding()
+            return success_response(result)
+
+        @router.post("/init_memories")
+        async def init_memories(include_templates: bool = Query(True)):
+            """Initialize recommended memory folder structure."""
+            c = await get_client()
+            result = await c.init_memories(include_templates)
+            return success_response(result)
+
         # Edit endpoints
         @router.post("/edit/replace")
         async def edit_replace(symbol: str, file: str, body: str):

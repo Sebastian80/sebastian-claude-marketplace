@@ -649,3 +649,52 @@ class SerenaClient:
             {"name_path": symbol, "relative_path": file, "new_name": new_name},
         )
         return str(result.data)
+
+    # =========================================================================
+    # Onboarding Operations
+    # =========================================================================
+
+    async def check_onboarding(self) -> str:
+        """
+        Check whether project onboarding was already performed.
+
+        Returns:
+            Status message indicating if onboarding is needed or listing available memories.
+        """
+        result = await self._call_tool("check_onboarding_performed", {})
+        return str(result.data)
+
+    async def onboarding(self) -> str:
+        """
+        Get onboarding instructions for a new project.
+
+        Should only be called if check_onboarding indicates onboarding is needed.
+
+        Returns:
+            Instructions on how to create the onboarding information.
+        """
+        result = await self._call_tool("onboarding", {})
+        return str(result.data)
+
+    async def init_memories(self, include_templates: bool = True) -> str:
+        """
+        Initialize the recommended memory folder structure.
+
+        Creates:
+        - active/tasks, active/sessions (current work)
+        - reference/architecture, patterns, integrations, workflows (documentation)
+        - learnings/mistakes, discoveries, commands (knowledge base)
+        - archive (historical records)
+        - .templates (reusable templates)
+
+        Args:
+            include_templates: Whether to create template files (default: True)
+
+        Returns:
+            Status message about created structure.
+        """
+        result = await self._call_tool(
+            "init_memories",
+            {"include_templates": include_templates},
+        )
+        return str(result.data)

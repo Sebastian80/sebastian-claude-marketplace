@@ -165,7 +165,8 @@ def parse_args(args: list[str]) -> tuple[dict, str]:
 
 # Commands that require POST method (checked against last path segment for nested commands)
 POST_COMMANDS = {
-    "activate", "write", "replace", "after", "before", "rename", "delete", "move", "archive"
+    "activate", "write", "replace", "after", "before", "rename", "delete", "move", "archive",
+    "init_memories",  # Creates memory folder structure
 }
 
 
