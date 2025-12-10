@@ -15,14 +15,14 @@ import time
 import urllib.request
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from skills_daemon.colors import get_color_tuple
+
 DAEMON_URL = "http://127.0.0.1:9100"
 PID_FILE = "/tmp/skills-daemon.pid"
 LOG_FILE = "/tmp/skills-daemon.log"
 
-RED, GREEN, YELLOW, DIM, BOLD, RESET = (
-    ("\033[31m", "\033[32m", "\033[33m", "\033[2m", "\033[1m", "\033[0m")
-    if sys.stdout.isatty() else ("", "", "", "", "", "")
-)
+RED, GREEN, YELLOW, _, DIM, BOLD, RESET = get_color_tuple()
 
 
 def read_pid() -> int | None:

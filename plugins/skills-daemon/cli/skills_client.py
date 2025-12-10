@@ -22,6 +22,9 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from skills_daemon.colors import get_color_tuple
+
 # Configuration
 DAEMON_URL = "http://127.0.0.1:9100"
 DAEMON_PORT = 9100
@@ -30,10 +33,7 @@ LOCK_FILE = "/tmp/skills-daemon.lock"
 TIMEOUT = 30
 
 # ANSI colors
-RED, GREEN, YELLOW, CYAN, DIM, BOLD, RESET = (
-    ("\033[31m", "\033[32m", "\033[33m", "\033[36m", "\033[2m", "\033[1m", "\033[0m")
-    if sys.stdout.isatty() else ("", "", "", "", "", "", "")
-)
+RED, GREEN, YELLOW, CYAN, DIM, BOLD, RESET = get_color_tuple()
 
 
 def is_port_in_use(port: int = DAEMON_PORT) -> bool:
