@@ -16,7 +16,8 @@ dev = [
 ]
 
 [project.scripts]
-skills-daemon = "skills_daemon.cli.daemon_ctl:main"
+skills-daemon = "cli.daemon_ctl:main"
+skills-client = "cli.skills_client:main"
 
 [build-system]
 requires = ["hatchling"]
