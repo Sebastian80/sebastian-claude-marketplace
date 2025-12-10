@@ -32,6 +32,10 @@ PID_FILE = "/tmp/skills-daemon.pid"
 LOCK_FILE = "/tmp/skills-daemon.lock"
 TIMEOUT = 30
 
+# Retry configuration
+MAX_RETRIES = 3
+RETRY_BACKOFF_BASE = 0.5  # seconds (0.5, 1.0, 2.0)
+
 # ANSI colors
 RED, GREEN, YELLOW, CYAN, DIM, BOLD, RESET = get_color_tuple()
 
@@ -171,29 +175,51 @@ def ensure_daemon() -> bool:
 
 
 def request(path: str, params: dict, method: str = "GET") -> dict:
-    """Make HTTP request to daemon."""
-    try:
-        url = f"{DAEMON_URL}/{path}"
-        # Always use query params (FastAPI endpoints expect Query params)
-        clean = {k: v for k, v in params.items() if v is not None}
-        if clean:
-            url += "?" + urllib.parse.urlencode(clean)
-        data = None  # Body not needed - using query params
+    """Make HTTP request to daemon with retry and exponential backoff.
 
-        req = urllib.request.Request(url, data=data, method=method)
-        req.add_header("Content-Type", "application/json")
+    Retries on transient errors (connection refused, timeout).
+    Does NOT retry on HTTP errors (4xx, 5xx) - those are legitimate responses.
+    """
+    url = f"{DAEMON_URL}/{path}"
+    # Always use query params (FastAPI endpoints expect Query params)
+    clean = {k: v for k, v in params.items() if v is not None}
+    if clean:
+        url += "?" + urllib.parse.urlencode(clean)
+    data = None  # Body not needed - using query params
 
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
-            return json.loads(resp.read().decode())
-    except urllib.error.HTTPError as e:
+    last_error = None
+
+    for attempt in range(MAX_RETRIES):
         try:
-            return json.loads(e.read().decode())
-        except Exception:
-            return {"success": False, "error": f"HTTP {e.code}"}
-    except urllib.error.URLError as e:
-        return {"success": False, "error": f"Connection failed: {e.reason}"}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+            req = urllib.request.Request(url, data=data, method=method)
+            req.add_header("Content-Type", "application/json")
+
+            with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+                return json.loads(resp.read().decode())
+
+        except urllib.error.HTTPError as e:
+            # HTTP errors are not transient - don't retry
+            try:
+                return json.loads(e.read().decode())
+            except Exception:
+                return {"success": False, "error": f"HTTP {e.code}"}
+
+        except (urllib.error.URLError, socket.timeout, ConnectionError) as e:
+            # Transient errors - retry with backoff
+            last_error = e
+            if attempt < MAX_RETRIES - 1:
+                delay = RETRY_BACKOFF_BASE * (2 ** attempt)
+                print(f"{DIM}Retry {attempt + 1}/{MAX_RETRIES} in {delay:.1f}s...{RESET}", file=sys.stderr)
+                time.sleep(delay)
+            continue
+
+        except Exception as e:
+            # Unknown errors - don't retry
+            return {"success": False, "error": str(e)}
+
+    # All retries exhausted
+    reason = str(last_error.reason) if hasattr(last_error, 'reason') else str(last_error)
+    return {"success": False, "error": f"Connection failed after {MAX_RETRIES} retries: {reason}"}
 
 
 def parse_args(args: list[str]) -> tuple[dict, str]:
