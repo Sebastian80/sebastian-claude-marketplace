@@ -12,6 +12,7 @@ dependencies = [
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
 ]
 
 [project.scripts]
@@ -21,3 +22,33 @@ skills-client = "cli.skills_client:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--tb=short",
+    "--asyncio-mode=auto",
+]
+markers = [
+    "unit: Unit tests (no I/O)",
+    "integration: Integration tests",
+    "cli: CLI tests",
+    "slow: Slow tests",
+]
+asyncio_mode = "auto"
+
+[tool.coverage.run]
+source = ["skills_daemon", "cli"]
+omit = ["*/tests/*", "*/.venv/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "@abstractmethod",
+]
