@@ -16,6 +16,9 @@ from .logging import logger, set_request_id, generate_request_id, request_id_ctx
 from .plugins import registry
 
 
+# Slow request threshold (1 second)
+SLOW_REQUEST_THRESHOLD_MS = 1000
+
 # Lifecycle manager (initialized on startup)
 lifecycle: LifecycleManager = None
 
@@ -99,6 +102,8 @@ async def log_requests(request: Request, call_next):
         response = await call_next(request)
 
         duration_ms = (time.time() - start) * 1000
+
+        # Log at DEBUG level normally
         logger.debug(
             "request",
             request_id=request_id,
@@ -107,6 +112,18 @@ async def log_requests(request: Request, call_next):
             status=response.status_code,
             duration_ms=round(duration_ms, 2),
         )
+
+        # Log slow requests at WARNING level
+        if duration_ms > SLOW_REQUEST_THRESHOLD_MS:
+            logger.warning(
+                "slow_request",
+                request_id=request_id,
+                method=request.method,
+                path=str(request.url.path),
+                status=response.status_code,
+                duration_ms=round(duration_ms, 2),
+                threshold_ms=SLOW_REQUEST_THRESHOLD_MS,
+            )
 
         # Add request ID to response headers
         response.headers["X-Request-ID"] = request_id
