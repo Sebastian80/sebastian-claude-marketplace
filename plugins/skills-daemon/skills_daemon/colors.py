@@ -9,23 +9,38 @@ import sys
 from typing import Callable
 
 
-# ANSI color codes
+# ANSI color codes (using bright variants 90-97 for vivid colors)
 _CODES = {
-    "red": "\033[31m",
-    "green": "\033[32m",
-    "yellow": "\033[33m",
-    "blue": "\033[34m",
-    "magenta": "\033[35m",
-    "cyan": "\033[36m",
-    "white": "\033[37m",
+    "red": "\033[91m",      # Bright red
+    "green": "\033[92m",    # Bright green
+    "yellow": "\033[93m",   # Bright yellow
+    "blue": "\033[94m",     # Bright blue
+    "magenta": "\033[95m",  # Bright magenta
+    "cyan": "\033[96m",     # Bright cyan
+    "white": "\033[97m",    # Bright white
     "dim": "\033[2m",
     "bold": "\033[1m",
     "reset": "\033[0m",
 }
 
 
+_force_colors = False
+
+
+def force_colors(enabled: bool = True) -> None:
+    """Force colors on/off regardless of TTY.
+
+    Call at daemon startup to always emit ANSI codes in formatted output.
+    Clients decide whether to strip them based on their own TTY status.
+    """
+    global _force_colors
+    _force_colors = enabled
+
+
 def _is_tty() -> bool:
-    """Check if stdout is a terminal."""
+    """Check if colors should be enabled."""
+    if _force_colors:
+        return True
     return sys.stdout.isatty()
 
 

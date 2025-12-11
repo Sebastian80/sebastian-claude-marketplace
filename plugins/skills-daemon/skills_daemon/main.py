@@ -17,6 +17,11 @@ from .config import config
 from .lifecycle import LifecycleManager
 from .logging import logger, set_request_id, generate_request_id, request_id_ctx
 from .plugins import registry
+from .colors import force_colors
+
+# Always emit ANSI color codes in formatted responses.
+# Clients decide whether to strip them based on their TTY status.
+force_colors(True)
 
 
 # Slow request threshold (1 second)

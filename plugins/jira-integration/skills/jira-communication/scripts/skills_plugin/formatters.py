@@ -1,15 +1,12 @@
 """
 Jira-specific formatters for skills-daemon.
 
-These extend the base formatters with Jira-aware formatting for:
-- Issues
-- Search results
-- Transitions
-- Comments
-- Workflows
+Uses Rich library for beautiful terminal output with tables, panels, and colors.
 """
 
+import os
 import sys
+from io import StringIO
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +19,145 @@ from skills_daemon.formatters import (
     BaseFormatter, HumanFormatter, JsonFormatter, AIFormatter, MarkdownFormatter,
     formatter_registry
 )
-from skills_daemon.colors import red, green, yellow, cyan, dim, bold
+
+# Rich imports
+from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
+from rich.text import Text
+from rich import box
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Jira URL for Hyperlinks
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _get_jira_url() -> str:
+    """Get Jira base URL from environment or config file."""
+    # Try environment first
+    url = os.environ.get("JIRA_URL", "")
+    if url:
+        return url.rstrip("/")
+
+    # Try config file
+    env_file = Path.home() / ".env.jira"
+    if env_file.exists():
+        for line in env_file.read_text().splitlines():
+            line = line.strip()
+            if line.startswith("JIRA_URL="):
+                url = line.partition("=")[2].strip().strip('"').strip("'")
+                return url.rstrip("/")
+    return ""
+
+
+def _make_issue_link(key: str, jira_url: str = "") -> Text:
+    """Create a clickable hyperlink to a Jira issue.
+
+    Returns Rich Text object with native link style. This allows Rich to:
+    - Calculate cell widths correctly (excluding invisible escape codes)
+    - Generate proper OSC 8 sequences itself
+    - Handle truncation gracefully
+
+    Args:
+        key: Issue key (e.g., "PROJ-123")
+        jira_url: Base Jira URL (auto-detected if empty)
+    """
+    if not jira_url:
+        jira_url = _get_jira_url()
+
+    text = Text(key)
+    if jira_url:
+        url = f"{jira_url}/browse/{key}"
+        # Rich native link: "link URL" in style generates proper OSC 8
+        text.stylize(f"bold cyan link {url}")
+    else:
+        text.stylize("bold cyan")
+    return text
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Jira Icons & Status Colors
+# ═══════════════════════════════════════════════════════════════════════════════
+
+TYPE_ICONS = {
+    # Bugs
+    "bug": "🐛", "problem": "🐛", "fehler": "🐛", "defect": "🐛",
+    # Tasks
+    "task": "☑️", "aufgabe": "☑️",
+    "technical task": "🔧", "sub: technical task": "🔧",
+    # Stories & Features
+    "story": "📗", "user story": "📗", "anforderung": "📗", "anforderung / user story": "📗",
+    "new feature": "✨", "feature": "✨",
+    # Epics
+    "epic": "⚡",
+    # Sub-tasks
+    "subtask": "📎", "sub-task": "📎", "unteraufgabe": "📎",
+    # Improvements
+    "improvement": "💡", "verbesserung": "💡", "enhancement": "💡",
+    # Research & Analysis
+    "analyse": "🔬", "analysis": "🔬", "spike": "🔬", "research": "🔬",
+    "investigation": "🔍", "sub: investigation": "🔍",
+    # Operations
+    "deployment": "🚀", "release": "🚀",
+    # Training & Docs
+    "training-education": "📚", "training": "📚", "documentation": "📝",
+    # Support
+    "support": "🎧", "question": "❓", "incident": "🚨",
+}
+
+STATUS_STYLES = {
+    # Done (green)
+    "done": ("✓", "green"), "fertig": ("✓", "green"), "closed": ("✓", "green"),
+    "geschlossen": ("✓", "green"), "resolved": ("✓", "green"), "released": ("✓", "green"),
+    "ready for deployment": ("✓", "green"),
+    # In Progress (yellow)
+    "in progress": ("►", "yellow"), "in arbeit": ("►", "yellow"),
+    "in review": ("►", "yellow"), "in entwicklung": ("►", "yellow"),
+    "development": ("►", "yellow"),
+    # Waiting (yellow dim)
+    "waiting": ("◦", "yellow"), "wartend": ("◦", "yellow"),
+    "waiting for qa": ("◦", "yellow"), "awaiting approval": ("◦", "yellow"),
+    # Blocked (red)
+    "blocked": ("✗", "red"), "blockiert": ("✗", "red"),
+    # Open/To Do (cyan)
+    "to do": ("○", "cyan"), "zu erledigen": ("○", "cyan"), "open": ("○", "cyan"),
+    "offen": ("○", "cyan"), "new": ("○", "cyan"), "neu": ("○", "cyan"),
+    "backlog": ("·", "dim"),
+    # Review
+    "review": ("◎", "yellow"), "code review": ("◎", "yellow"),
+    "analyse": ("◎", "cyan"),
+}
+
+PRIORITY_STYLES = {
+    "blocker": ("▲▲", "bold red"), "critical": ("▲▲", "bold red"),
+    "highest": ("▲", "red"), "high": ("▲", "yellow"),
+    "medium": ("─", "dim"), "low": ("▼", "dim"), "lowest": ("▼▼", "dim"),
+}
+
+
+def _get_type_icon(type_name: str) -> str:
+    if not type_name:
+        return "•"
+    return TYPE_ICONS.get(type_name.lower(), "•")
+
+
+def _get_status_style(status_name: str) -> tuple[str, str]:
+    if not status_name:
+        return ("?", "dim")
+    return STATUS_STYLES.get(status_name.lower(), ("•", "dim"))
+
+
+def _get_priority_style(priority_name: str) -> tuple[str, str]:
+    if not priority_name:
+        return ("", "dim")
+    return PRIORITY_STYLES.get(priority_name.lower(), ("", "dim"))
+
+
+def _render_to_string(renderable) -> str:
+    """Render a Rich object to ANSI string."""
+    console = Console(file=StringIO(), force_terminal=True, width=80)
+    console.print(renderable)
+    return console.file.getvalue().rstrip()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -30,7 +165,7 @@ from skills_daemon.colors import red, green, yellow, cyan, dim, bold
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class JiraIssueHumanFormatter(HumanFormatter):
-    """Human-friendly issue formatting."""
+    """Human-friendly issue formatting using Rich panels."""
 
     def format(self, data: Any) -> str:
         if isinstance(data, dict) and "fields" in data:
@@ -39,21 +174,78 @@ class JiraIssueHumanFormatter(HumanFormatter):
 
     def _format_issue(self, issue: dict) -> str:
         f = issue.get("fields", {})
-        lines = [
-            f"{bold('Key:')} {cyan(issue.get('key', '?'))}",
-            f"{bold('Type:')} {f.get('issuetype', {}).get('name', '?')} | "
-            f"{bold('Status:')} {f.get('status', {}).get('name', '?')} | "
-            f"{bold('Priority:')} {f.get('priority', {}).get('name', '?')}",
-            f"{bold('Summary:')} {f.get('summary', '?')}",
-        ]
+        key = issue.get("key", "?")
+        type_name = f.get("issuetype", {}).get("name", "?")
+        status_name = f.get("status", {}).get("name", "?")
+        priority_name = f.get("priority", {}).get("name", "")
+        summary = f.get("summary", "?")
+
+        type_icon = _get_type_icon(type_name)
+        status_icon, status_style = _get_status_style(status_name)
+        priority_icon, priority_style = _get_priority_style(priority_name)
+
+        # Build content with summary
+        from rich.console import Group
+        parts = []
+
+        # Summary
+        parts.append(Text(summary, style="bold"))
+        parts.append(Text(""))  # Blank line
+
+        # Metadata grid
+        meta = Table(show_header=False, box=None, padding=(0, 2), expand=False)
+        meta.add_column("Field", style="bold dim", width=10)
+        meta.add_column("Value")
+
+        # Status with icon and color
+        status_text = Text(f"{status_icon} {status_name}", style=status_style)
+        meta.add_row("Status", status_text)
+
+        # Priority with icon
+        if priority_name:
+            priority_text = Text(f"{priority_icon} {priority_name}", style=priority_style)
+            meta.add_row("Priority", priority_text)
+
+        # Assignee
         if f.get("assignee"):
-            lines.append(f"{bold('Assignee:')} {f['assignee'].get('displayName', '?')}")
+            meta.add_row("Assignee", Text(f["assignee"].get("displayName", "?"), style="cyan"))
+
+        # Reporter
+        if f.get("reporter"):
+            meta.add_row("Reporter", Text(f["reporter"].get("displayName", "?"), style="dim"))
+
+        # Labels
+        if f.get("labels"):
+            meta.add_row("Labels", Text(", ".join(f["labels"][:5]), style="magenta"))
+
+        parts.append(meta)
+
+        # Add description if present
         if f.get("description"):
-            desc = f["description"][:400]
-            if len(f["description"]) > 400:
+            parts.append(Text(""))  # Blank line
+            parts.append(Text("Description", style="bold dim"))
+            desc = f["description"][:500]
+            if len(f["description"]) > 500:
                 desc += "..."
-            lines.append(f"{bold('Description:')}\n{desc}")
-        return "\n".join(lines)
+            parts.append(Text(desc, style="dim"))
+
+        # Create panel with title (clickable issue key via Rich Text)
+        title = Text.assemble(
+            (f"{type_icon}  ", ""),
+            _make_issue_link(key),
+            (f"  {type_name}", "dim"),
+        )
+
+        panel = Panel(
+            Group(*parts),
+            title=title,
+            title_align="left",
+            box=box.ROUNDED,
+            border_style="cyan",
+            padding=(1, 2),
+        )
+
+        return _render_to_string(panel)
 
 
 class JiraIssueAIFormatter(AIFormatter):
@@ -111,7 +303,7 @@ class JiraIssueMarkdownFormatter(MarkdownFormatter):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class JiraSearchHumanFormatter(HumanFormatter):
-    """Human-friendly search results."""
+    """Human-friendly search results using Rich tables."""
 
     def format(self, data: Any) -> str:
         if isinstance(data, list) and data and "fields" in data[0]:
@@ -120,15 +312,38 @@ class JiraSearchHumanFormatter(HumanFormatter):
 
     def _format_search(self, issues: list) -> str:
         if not issues:
-            return yellow("No issues found")
-        lines = []
+            return _render_to_string(Text("No issues found", style="yellow"))
+
+        table = Table(
+            title=f"Search Results ({len(issues)} issues)",
+            box=box.ROUNDED,
+            header_style="bold",
+            border_style="dim",
+            title_style="bold",
+        )
+
+        # no_wrap=True prevents emoji from wrapping incorrectly
+        table.add_column("", width=3, justify="center", no_wrap=True)  # Type icon (emoji width)
+        table.add_column("Key", min_width=12, no_wrap=True)  # Clickable links
+        table.add_column("Status", min_width=16, no_wrap=True)
+        table.add_column("Summary", max_width=40)
+
         for i in issues:
             f = i.get("fields", {})
             key = i.get("key", "?")
-            status = f.get("status", {}).get("name", "?")
-            summary = f.get("summary", "?")[:50]
-            lines.append(f"{cyan(f'{key:15}')} {status:15} {summary}")
-        return "\n".join(lines)
+            type_name = f.get("issuetype", {}).get("name", "")
+            status_name = f.get("status", {}).get("name", "?")
+            summary = f.get("summary", "?")[:40]
+
+            type_icon = _get_type_icon(type_name)
+            status_icon, status_style = _get_status_style(status_name)
+
+            status_text = Text(f"{status_icon} {status_name}", style=status_style)
+
+            # Use Rich native link style - Rich handles OSC 8 generation and cell width
+            table.add_row(type_icon, _make_issue_link(key), status_text, summary)
+
+        return _render_to_string(table)
 
 
 class JiraSearchAIFormatter(AIFormatter):
@@ -182,7 +397,7 @@ class JiraSearchMarkdownFormatter(MarkdownFormatter):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class JiraTransitionsHumanFormatter(HumanFormatter):
-    """Human-friendly transitions list."""
+    """Human-friendly transitions using Rich tables."""
 
     def format(self, data: Any) -> str:
         if isinstance(data, list) and data and "to" in data[0]:
@@ -191,11 +406,28 @@ class JiraTransitionsHumanFormatter(HumanFormatter):
 
     def _format_transitions(self, transitions: list) -> str:
         if not transitions:
-            return yellow("No transitions available")
-        lines = []
+            return _render_to_string(Text("No transitions available", style="yellow"))
+
+        table = Table(
+            title="Available Transitions",
+            box=box.SIMPLE,
+            header_style="bold",
+            title_style="bold",
+        )
+
+        table.add_column("Action", style="cyan", min_width=25)
+        table.add_column("→", justify="center", width=3)
+        table.add_column("Target Status", min_width=20)
+
         for t in transitions:
-            lines.append(f"  {t.get('id'):5} {t.get('name'):25} {dim('→')} {t.get('to', '?')}")
-        return "\n".join(lines)
+            name = t.get('name', '?')
+            to_status = t.get('to', '?')
+            status_icon, status_style = _get_status_style(to_status)
+            status_text = Text(f"{status_icon} {to_status}", style=status_style)
+
+            table.add_row(name, "→", status_text)
+
+        return _render_to_string(table)
 
 
 class JiraTransitionsAIFormatter(AIFormatter):
@@ -220,7 +452,7 @@ class JiraTransitionsAIFormatter(AIFormatter):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class JiraCommentsHumanFormatter(HumanFormatter):
-    """Human-friendly comments list."""
+    """Human-friendly comments using Rich panels."""
 
     def format(self, data: Any) -> str:
         if isinstance(data, list) and data and "author" in data[0]:
@@ -229,14 +461,34 @@ class JiraCommentsHumanFormatter(HumanFormatter):
 
     def _format_comments(self, comments: list) -> str:
         if not comments:
-            return yellow("No comments")
-        lines = []
+            return _render_to_string(Text("No comments", style="yellow"))
+
+        output = []
+        output.append(_render_to_string(Text(f"Comments ({len(comments)})", style="bold")))
+        output.append("")
+
         for c in comments:
             author = c.get("author", {}).get("displayName", "?")
             created = c.get("created", "?")[:10]
-            body = c.get("body", "")[:120].replace("\n", " ")
-            lines.append(f"{dim(created)} {cyan(author)}: {body}")
-        return "\n".join(lines)
+            body = c.get("body", "")[:300]
+            if len(c.get("body", "")) > 300:
+                body += "..."
+
+            # Create mini panel for each comment
+            title = Text()
+            title.append(author, style="cyan bold")
+            title.append(f"  {created}", style="dim")
+
+            panel = Panel(
+                body,
+                title=title,
+                title_align="left",
+                box=box.SIMPLE,
+                padding=(0, 1),
+            )
+            output.append(_render_to_string(panel))
+
+        return "\n".join(output)
 
 
 class JiraCommentsAIFormatter(AIFormatter):
@@ -263,25 +515,18 @@ class JiraCommentsAIFormatter(AIFormatter):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def register_jira_formatters():
-    """Register all Jira formatters with the daemon.
-
-    Uses 4-arg API: formatter_registry.register(plugin, data_type, format, FormatterClass)
-    """
-    # Issues
+    """Register all Jira formatters with the daemon."""
     formatter_registry.register("jira", "issue", "human", JiraIssueHumanFormatter)
     formatter_registry.register("jira", "issue", "ai", JiraIssueAIFormatter)
     formatter_registry.register("jira", "issue", "markdown", JiraIssueMarkdownFormatter)
 
-    # Search
     formatter_registry.register("jira", "search", "human", JiraSearchHumanFormatter)
     formatter_registry.register("jira", "search", "ai", JiraSearchAIFormatter)
     formatter_registry.register("jira", "search", "markdown", JiraSearchMarkdownFormatter)
 
-    # Transitions
     formatter_registry.register("jira", "transitions", "human", JiraTransitionsHumanFormatter)
     formatter_registry.register("jira", "transitions", "ai", JiraTransitionsAIFormatter)
 
-    # Comments
     formatter_registry.register("jira", "comments", "human", JiraCommentsHumanFormatter)
     formatter_registry.register("jira", "comments", "ai", JiraCommentsAIFormatter)
 

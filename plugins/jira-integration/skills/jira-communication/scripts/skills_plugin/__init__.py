@@ -288,7 +288,7 @@ class JiraPlugin(SkillPlugin):
         async def search(
             jql: str,
             max_results: int = Query(50, alias="maxResults"),
-            fields: str = Query("key,summary,status,assignee,priority"),
+            fields: str = Query("key,summary,status,assignee,priority,issuetype"),
             format: str = Query("json", description="Output format: json, human, ai, markdown"),
         ):
             """Search issues using JQL."""
