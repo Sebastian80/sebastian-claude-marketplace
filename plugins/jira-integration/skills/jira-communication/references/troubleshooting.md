@@ -1,31 +1,18 @@
 # Troubleshooting Guide
 
-## Setup Validation
+## Quick Health Check
 
-Always start with:
 ```bash
-uv run scripts/core/jira-validate.py --verbose
-```
+# Check daemon and Jira connection
+skills-client health
 
-### Exit Codes
-| Code | Meaning | Action |
-|------|---------|--------|
-| 0 | All checks passed | Ready to use |
-| 1 | Runtime dependency missing | Install `uv` |
-| 2 | Environment config error | Check `~/.env.jira` |
-| 3 | Connectivity/auth failure | Verify credentials |
+# Verify Jira credentials
+jira user me
+```
 
 ## Configuration
 
-Scripts load configuration in priority order:
-1. `~/.env.jira` file (if exists)
-2. Environment variables (fallback for missing values)
-
-You can use either approach or combine them.
-
-### Option A: Environment File
-
-Create `~/.env.jira`:
+Credentials loaded from `~/.env.jira`:
 
 ### Jira Cloud
 ```bash
@@ -40,42 +27,24 @@ JIRA_URL=https://jira.yourcompany.com
 JIRA_PERSONAL_TOKEN=your-personal-access-token
 ```
 
-### Option B: Environment Variables
-
-Export variables directly (useful in CI/CD or when credentials are managed externally):
-
-```bash
-# Jira Cloud
-export JIRA_URL=https://yourcompany.atlassian.net
-export JIRA_USERNAME=your-email@example.com
-export JIRA_API_TOKEN=your-api-token-here
-
-# Or Jira Server/DC
-export JIRA_URL=https://jira.yourcompany.com
-export JIRA_PERSONAL_TOKEN=your-personal-access-token
-```
-
 ## Common Errors
 
-### "Configuration errors: Missing required"
+### "Could not start daemon"
 
-**Cause**: Required variables not found in file or environment.
-
-**Fix**:
-1. Check `~/.env.jira` exists with correct values, OR
-2. Verify environment variables are exported
-3. Variable names are case-sensitive
-4. No quotes around values needed in `.env.jira`
-
-### "Failed to connect to Jira"
-
-**Cause**: Network, URL, or SSL issues.
+**Cause**: Daemon failed to start or port 9100 in use.
 
 **Fix**:
-1. Verify URL is correct (include `https://`)
-2. Test URL in browser
-3. Check VPN if on corporate network
-4. For self-signed certs, may need `JIRA_VERIFY_SSL=false`
+1. Check if something else uses port 9100: `ss -tlnp | grep 9100`
+2. Check daemon logs: `tail ~/.local/share/skills-daemon/logs/daemon.log`
+3. Restart daemon: `skills-daemon restart`
+
+### "Connection failed" / "Connection reset"
+
+**Cause**: Network issue or ESET security software intercepting loopback.
+
+**Fix**:
+1. Daemon uses IPv6 loopback to bypass ESET - should work automatically
+2. If persists, check daemon is running: `skills-client health`
 
 ### "401 Unauthorized"
 
@@ -98,19 +67,6 @@ export JIRA_PERSONAL_TOKEN=your-personal-access-token
 2. Check if IP allowlisting blocks API access
 3. Confirm API access not disabled by admin
 
-### "No such option: --json"
-
-**Cause**: Flag placed after subcommand.
-
-**Fix**: Move flags before subcommand:
-```bash
-# Wrong
-uv run scripts/core/jira-issue.py get PROJ-123 --json
-
-# Correct
-uv run scripts/core/jira-issue.py --json get PROJ-123
-```
-
 ### "Issue does not exist"
 
 **Cause**: Wrong key or no permission.
@@ -120,27 +76,30 @@ uv run scripts/core/jira-issue.py --json get PROJ-123
 2. Confirm you have "Browse" permission on project
 3. Check if issue was moved/deleted
 
-### "Field 'xyz' cannot be set"
+### "detail: Not Found"
 
-**Cause**: Field not editable or wrong format.
+**Cause**: Wrong command syntax or endpoint doesn't exist.
 
 **Fix**:
-1. Use `jira-fields.py search xyz` to find correct field ID
-2. Check field is on the edit screen for that issue type
-3. Verify field format (some need `{"name": "value"}`)
+1. Check command with `jira --help`
+2. Positional args become path: `jira user me` → `/jira/user/me`
 
 ## Debug Mode
 
-Add `--debug` for full stack traces:
 ```bash
-uv run scripts/core/jira-issue.py --debug get PROJ-123
+# Check daemon status
+skills-client health
+
+# View daemon logs
+tail -f ~/.local/share/skills-daemon/logs/daemon.log
+
+# Test direct API call
+curl -s "http://[::1]:9100/jira/user/me"
 ```
 
 ## Auth Mode Detection
 
-Scripts auto-detect auth mode:
+The daemon auto-detects auth mode:
 - If `JIRA_PERSONAL_TOKEN` set → Server/DC PAT auth
 - If `JIRA_USERNAME` + `JIRA_API_TOKEN` set → Cloud basic auth
 - URL containing `.atlassian.net` → Cloud mode
-
-Override with `JIRA_CLOUD=true` or `JIRA_CLOUD=false`.

@@ -13,7 +13,7 @@ description: >
 
 # Jira Communication
 
-Unified `jira` CLI wrapper for all Jira operations.
+Unified `jira` CLI for all Jira operations via skills-daemon.
 
 ## The Iron Law
 
@@ -27,244 +27,98 @@ If a ticket key (PROJ-123, HMKG-2064) appears anywhere in conversation:
 - Git branch name
 - Error output
 
-**You MUST fetch it using `jira issue get`.**
+**You MUST fetch it using `jira issue KEY`.**
 
 Not "might be useful to fetch" - MUST fetch. Not "if relevant" - ALWAYS.
 
 Fetching takes 2 seconds. Guessing wastes the user's time when you're wrong.
 
-## Trigger Patterns
+## Architecture
 
-**Immediate fetch required:**
-- `PROJ-123`, `HMKG-2064` - any UPPERCASE-NUMBER pattern
-- "ticket", "issue", "Jira" + identifier
-- "look up", "check", "status of", "what's" + ticket reference
-- Branch names like `HMKG-2064-fix-something`
+```
+jira <command> [args] [--params]
+    ↓
+skills-client jira <command> [args] [--params]
+    ↓ HTTP
+skills-daemon (FastAPI on port 9100)
+    ↓
+Jira API
+```
 
-**No judgment. No "is it relevant?". See pattern -> fetch.**
+The CLI is thin - all logic is in the daemon. Daemon auto-starts on first use.
 
-## Common Rationalizations
+## Quick Reference
 
-| Excuse | Reality |
-|--------|---------|
-| "Quick lookup, faster to describe" | Fetching takes 2 seconds. Your "quick description" is a guess. |
-| "I remember the ticket from earlier" | Memory is unreliable. Tickets change. Fetch the current state. |
-| "User didn't ask me to fetch it" | User mentioned it. That's implicit permission. Fetch it. |
-| "I'll just say I don't have access" | You DO have access. Use the `jira` command. |
-| "It would interrupt my flow" | Fetching is part of the flow. 2 seconds isn't interruption. |
-| "I can infer from context" | Inference != facts. Fetch the facts. |
-| "The ticket isn't relevant to the task" | If it was mentioned, it's relevant. Fetch it. |
+```bash
+# Get issue
+jira issue PROJ-123
 
-## Red Flags - STOP and Fetch
+# Search
+jira search --jql "assignee = currentUser()"
 
-If you catch yourself thinking:
-- "I don't need to look that up"
-- "I can answer from context"
-- "Let me just describe what I know"
-- "The user can check Jira themselves"
-- "I'll mention I don't have access to Jira"
-- "Fetching would slow things down"
-- "It's probably still in the same status"
+# Current user
+jira user me
 
-**STOP. You are rationalizing. Fetch the ticket.**
+# Transitions
+jira transitions PROJ-123           # List available
+jira transition PROJ-123 --target "In Progress"
 
-If you've already responded without fetching: Acknowledge the mistake, fetch now.
+# Comments
+jira comments PROJ-123              # List
+jira comment PROJ-123 --text "Done"
 
----
+# Create issue
+jira create --project PROJ --type Task --summary "New task"
 
-## Instructions
-
-- **Use the `jira` wrapper** - not the underlying Python scripts directly
-- **Default to `--format json`** when processing data programmatically
-- **Credentials**: Via `~/.env.jira` file or environment variables (see Authentication)
-- **Content formatting**: Use **jira-syntax** skill for descriptions/comments (Jira wiki markup, NOT Markdown)
+# Workflows
+jira workflows                      # List cached
+jira workflow discover PROJ-123     # Discover from issue
+```
 
 ## API Self-Discovery
 
-Use `--help` to discover available commands and their parameters dynamically:
-
 ```bash
-jira --help              # List all commands
-jira search --help       # Get search command parameters
-jira issue --help        # Get issue command parameters
+jira --help                    # List all commands
+skills-client jira --help      # Same thing
+skills-client jira issue --help  # Command-specific help
 ```
 
-The help is generated from the daemon's FastAPI metadata - always up-to-date with the actual API.
+Help is generated from daemon's FastAPI metadata - always current.
+
+## Output Formats
+
+```bash
+jira issue PROJ-123              # Default compact output
+jira --json issue PROJ-123       # Raw JSON for programmatic use
+```
 
 ## Permission Setup
 
-Add to your Claude Code settings for auto-approval:
+Add to Claude Code settings for auto-approval:
 ```
-Bash(/path/to/jira:*)
-```
-
-Example: `Bash(/home/user/.local/bin/jira:*)`
-
-## Available Commands
-
-### Core Operations
-
-#### `jira issue`
-**When to use:** Get or update issue details
-```bash
-jira issue get PROJ-123
-jira issue --json get PROJ-123
-jira issue get PROJ-123 --full
-```
-
-#### `jira search`
-**When to use:** Search issues with JQL queries
-```bash
-jira search query "project = PROJ AND status = Open"
-jira search --json query "assignee = currentUser()"
-```
-
-#### `jira validate`
-**When to use:** Verify Jira connection and credentials
-```bash
-jira validate
-jira validate --verbose
-```
-
-#### `jira worklog`
-**When to use:** Add or list time tracking entries
-```bash
-jira worklog add PROJ-123 2h --comment "Implemented feature X"
-jira worklog list PROJ-123
-```
-
-### Workflow Operations
-
-#### `jira create`
-**When to use:** Create new issues (use **jira-syntax** skill for description content)
-```bash
-jira create issue PROJ "Fix login bug" --type Bug
-jira create issue PROJ "New feature" --type Story --dry-run
-```
-
-#### `jira transition`
-**When to use:** Change issue status with smart multi-step navigation
-```bash
-# Simple transition
-jira transition do PROJ-123 "In Progress"
-
-# Smart multi-step (finds path automatically)
-jira transition do PROJ-123 "Waiting for QA"
-
-# With comment trail
-jira transition do PROJ-123 "Waiting for QA" --comment
-
-# Dry-run to see path
-jira transition do PROJ-123 "Done" --dry-run
-```
-
-#### `jira workflow`
-**When to use:** Discover, view, and analyze Jira workflows
-```bash
-# Discover workflow from issue
-jira workflow discover PROJ-123
-
-# Show workflow for issue type
-jira workflow show "Sub: Task"
-jira workflow show "Sub: Task" --format ascii
-
-# List known workflows
-jira workflow list
-
-# Show path between states
-jira workflow path "Sub: Task" --from "Offen" --to "Waiting for QA"
-
-# Validate workflow for dead ends
-jira workflow validate "Sub: Task"
-```
-
-#### `jira comment`
-**When to use:** Add comments to issues (use **jira-syntax** skill for formatting)
-```bash
-jira comment add PROJ-123 "Work completed"
-```
-
-#### `jira sprint`
-**When to use:** List sprints or sprint issues
-```bash
-jira sprint list
-jira sprint issues 123
-```
-
-#### `jira board`
-**When to use:** List boards or board issues
-```bash
-jira board list
-jira board issues 456
-```
-
-### Utility Operations
-
-#### `jira user`
-**When to use:** Get user profile information
-```bash
-jira user me
-```
-
-#### `jira fields`
-**When to use:** Search available Jira fields
-```bash
-jira fields search "sprint"
-```
-
-#### `jira link`
-**When to use:** Create or list issue links
-```bash
-jira link list PROJ-123
-jira link create PROJ-123 PROJ-456 "blocks"
-```
-
-## Flag Ordering
-
-Global flags go **after** the subcommand:
-
-```bash
-# Correct
-jira issue --json get PROJ-123
-
-# Wrong - wrapper won't recognize command
-jira --json issue get PROJ-123
-```
-
-## Quick Start
-
-All commands support `--help`, `--json`, `--quiet`, and `--debug`.
-
-```bash
-# Validate setup first
-jira validate --verbose
-
-# Search issues
-jira search query "project = PROJ AND status = Open"
-
-# Get issue details
-jira issue get PROJ-123
-
-# Transition with dry-run
-jira transition do PROJ-123 "In Progress" --dry-run
+Bash(/home/user/.local/bin/jira:*)
 ```
 
 ## Common Workflows
 
-### Find my open issues and get details
+### Get issue details
 ```bash
-jira search --json query "assignee = currentUser() AND status != Done"
+jira issue PROJ-123
 ```
 
-### Log 2 hours of work
+### Search my open issues
 ```bash
-jira worklog add PROJ-123 2h --comment "Implemented feature X"
+jira search --jql "assignee = currentUser() AND status != Done"
 ```
 
-### Create and transition an issue
+### Transition an issue
 ```bash
-jira create issue PROJ "Fix login bug" --type Bug
-jira transition do PROJ-124 "In Progress"
+jira transition PROJ-123 --target "In Progress"
+```
+
+### Add a comment
+```bash
+jira comment PROJ-123 --text "Work completed"
 ```
 
 ## Related Skills
@@ -281,11 +135,19 @@ jira transition do PROJ-124 "In Progress"
 
 ## Authentication
 
-Configuration loaded in priority order:
-1. `~/.env.jira` file (if exists)
-2. Environment variables (fallback for missing values)
+Configuration loaded from `~/.env.jira`:
 
-**Jira Cloud**: `JIRA_URL` + `JIRA_USERNAME` + `JIRA_API_TOKEN`
-**Jira Server/DC**: `JIRA_URL` + `JIRA_PERSONAL_TOKEN`
+**Jira Cloud**:
+```bash
+JIRA_URL=https://yourcompany.atlassian.net
+JIRA_USERNAME=your-email@example.com
+JIRA_API_TOKEN=your-api-token-here
+```
 
-Run `jira validate --verbose` to verify setup. See [references/troubleshooting.md](references/troubleshooting.md) for detailed setup.
+**Jira Server/DC**:
+```bash
+JIRA_URL=https://jira.yourcompany.com
+JIRA_PERSONAL_TOKEN=your-personal-access-token
+```
+
+Verify with: `jira user me`
