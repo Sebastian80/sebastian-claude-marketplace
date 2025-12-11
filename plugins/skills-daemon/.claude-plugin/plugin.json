@@ -1,9 +1,0 @@
-{
-  "name": "skills-daemon",
-  "version": "1.0.0",
-  "description": "Central FastAPI daemon for Claude Code skills. Plugin architecture with auto-discovery, concurrent request handling, and auto-generated API docs.",
-  "author": {
-    "name": "Sebastian"
-  },
-  "license": "MIT"
-}
