@@ -1,17 +1,30 @@
 """
 Link operations (issue links and web links).
 
+Manage relationships between issues and external resources.
+
+Issue Links: Connect related issues (blocks, causes, relates to, etc.)
+Web Links: Attach external URLs (PRs, docs, etc.) to issues
+
 Endpoints:
+- GET /links/{key} - List all links on an issue
+- GET /linktypes - List available link types
+- GET /link/types - List available link types (alias)
 - POST /link - Create link between issues
-- GET /link/types - List available link types
 - POST /weblink/{key} - Add web link to issue
 - GET /weblinks/{key} - List web links on issue
 - DELETE /weblink/{key}/{link_id} - Remove web link
+
+Examples:
+    jira links PROJ-123        # Show all links on issue
+    jira linktypes             # Available link type names
+    jira link --from PROJ-1 --to PROJ-2 --type Blocks
+    jira weblinks PROJ-123     # Show web/remote links
 """
 
 from fastapi import APIRouter, HTTPException, Query
 
-from ..client import get_client, success_response
+from ..client import get_client, success_response, formatted_response
 
 router = APIRouter()
 
@@ -19,6 +32,64 @@ router = APIRouter()
 # ═══════════════════════════════════════════════════════════════════════════════
 # Issue Links
 # ═══════════════════════════════════════════════════════════════════════════════
+
+
+@router.get("/links/{key}")
+async def get_issue_links(
+    key: str,
+    format: str = Query("json", description="Output format: json, human, ai, markdown"),
+):
+    """List all links on an issue.
+
+    Shows both issue links (relationships to other issues) and remote/web links.
+    Each link shows the relationship type and linked issue/URL.
+
+    Link directions:
+    - Outward: "this issue blocks PROJ-456"
+    - Inward: "this issue is blocked by PROJ-123"
+
+    Examples:
+        jira links PROJ-123
+        jira links PROJ-123 --format human
+    """
+    client = await get_client()
+    try:
+        issue = client.issue(key, fields="issuelinks")
+        links = issue.get('fields', {}).get('issuelinks', [])
+        return formatted_response(links, format, "links")
+    except Exception as e:
+        error_msg = str(e).lower()
+        if "not exist" in error_msg or "not found" in error_msg:
+            raise HTTPException(status_code=404, detail=f"Issue {key} not found")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/linktypes")
+async def list_link_types_alias(
+    format: str = Query("json", description="Output format: json, human, ai, markdown"),
+):
+    """List available issue link types.
+
+    Shows all relationship types you can use when linking issues.
+    Each type has an inward and outward name.
+
+    Common types:
+    - Blocks / is blocked by
+    - Clones / is cloned by
+    - Relates to
+    - Causes / is caused by
+    - Duplicates / is duplicated by
+
+    Examples:
+        jira linktypes
+        jira linktypes --format human
+    """
+    client = await get_client()
+    try:
+        types = client.get_issue_link_types()
+        return formatted_response(types, format, "linktypes")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/link")

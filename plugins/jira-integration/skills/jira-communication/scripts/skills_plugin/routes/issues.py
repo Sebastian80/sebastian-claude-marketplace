@@ -1,10 +1,23 @@
 """
 Issue CRUD operations.
 
+Core operations for working with Jira issues: viewing, creating, and updating.
+
 Endpoints:
-- GET /issue/{key} - Get issue details
-- POST /create - Create new issue
-- PATCH /issue/{key} - Update issue fields
+- GET /issue/{key} - Get issue details with optional field filtering
+- POST /create - Create new issue with required and optional fields
+- PATCH /issue/{key} - Update specific fields on existing issue
+
+Expand options for /issue:
+- changelog: History of all field changes
+- transitions: Available workflow transitions
+- renderedFields: HTML-rendered description/comments
+
+Examples:
+    jira issue PROJ-123                           # Full issue details
+    jira issue PROJ-123 --fields key,summary      # Specific fields only
+    jira issue PROJ-123 --expand changelog        # Include change history
+    jira create --project PROJ --type Bug --summary "Fix login issue"
 """
 
 from fastapi import APIRouter, HTTPException, Query

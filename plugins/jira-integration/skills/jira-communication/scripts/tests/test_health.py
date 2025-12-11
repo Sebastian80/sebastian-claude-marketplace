@@ -1,12 +1,16 @@
 """
-Tests for daemon health and plugin connection.
+Tests for daemon health and Jira plugin connection.
+
+Endpoints tested:
+- skills-client health - Daemon health
+- GET /health - Jira plugin health
 
 Cross-cutting tests that verify the skills daemon and Jira plugin are operational.
 """
 
 import pytest
 
-from helpers import run_cli, run_cli_raw
+from helpers import run_cli, run_cli_raw, get_data
 
 
 class TestDaemonHealth:
@@ -29,6 +33,37 @@ class TestDaemonHealth:
         result = run_cli("plugins")
         plugin_names = [p["name"] for p in result.get("plugins", [])]
         assert "jira" in plugin_names
+
+
+class TestJiraHealth:
+    """Test Jira plugin /health endpoint."""
+
+    def test_jira_health_basic(self):
+        """Should return Jira connection health."""
+        result = run_cli("jira", "health")
+        data = get_data(result)
+        assert data.get("status") == "healthy"
+        assert data.get("connected") is True
+
+    def test_jira_health_user_info(self):
+        """Health should include user info."""
+        result = run_cli("jira", "health")
+        data = get_data(result)
+        assert "user" in data
+        assert data.get("user") is not None
+
+    def test_jira_health_server_info(self):
+        """Health should include server URL."""
+        result = run_cli("jira", "health")
+        data = get_data(result)
+        assert "server" in data
+        assert "jira" in data.get("server", "").lower()
+
+    def test_jira_health_formats(self):
+        """Should support multiple output formats."""
+        for fmt in ["json", "human", "ai", "markdown"]:
+            stdout, stderr, code = run_cli_raw("jira", "health", "--format", fmt)
+            assert code == 0
 
 
 class TestPluginHelp:

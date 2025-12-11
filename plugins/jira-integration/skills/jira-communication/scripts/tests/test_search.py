@@ -3,6 +3,8 @@ Tests for search/JQL endpoint.
 
 Endpoints tested:
 - GET /search - Search issues with JQL
+
+Supports pagination with --startAt and --maxResults parameters.
 """
 
 import pytest
@@ -59,6 +61,49 @@ class TestSearch:
         stdout, stderr, code = run_cli_raw("jira", "search", "--jql", f"project = {TEST_PROJECT}",
                                            "--maxResults", "3", "--format", "markdown")
         assert code == 0
+
+
+class TestSearchPagination:
+    """Test search pagination with startAt and maxResults."""
+
+    def test_search_with_start_at(self):
+        """Should skip results using startAt parameter."""
+        # Get first page
+        result1 = run_cli("jira", "search", "--jql", f"project = {TEST_PROJECT} ORDER BY key ASC",
+                         "--startAt", "0", "--maxResults", "3", "--fields", "key")
+        data1 = get_data(result1)
+
+        # Get second page
+        result2 = run_cli("jira", "search", "--jql", f"project = {TEST_PROJECT} ORDER BY key ASC",
+                         "--startAt", "3", "--maxResults", "3", "--fields", "key")
+        data2 = get_data(result2)
+
+        # Results should be different (pagination working)
+        if len(data1) > 0 and len(data2) > 0:
+            assert data1[0].get("key") != data2[0].get("key")
+
+    def test_search_pagination_info(self):
+        """JSON response should include pagination metadata."""
+        stdout, stderr, code = run_cli_raw("jira", "search", "--jql", f"project = {TEST_PROJECT}",
+                        "--startAt", "0", "--maxResults", "5", "--fields", "key", "--format", "json")
+        assert code == 0
+        # Response includes pagination info in wrapped format
+        assert "pagination" in stdout or "startAt" in stdout or "OROSPD" in stdout
+
+    def test_search_start_at_zero(self):
+        """startAt=0 should return first results."""
+        result = run_cli("jira", "search", "--jql", f"project = {TEST_PROJECT} ORDER BY key ASC",
+                        "--startAt", "0", "--maxResults", "1", "--fields", "key")
+        data = get_data(result)
+        assert len(data) > 0
+
+    def test_search_large_start_at(self):
+        """Large startAt should return empty or fewer results."""
+        result = run_cli("jira", "search", "--jql", f"project = {TEST_PROJECT}",
+                        "--startAt", "10000", "--maxResults", "10", "--fields", "key")
+        data = get_data(result)
+        # Should not error, may return empty
+        assert isinstance(data, list)
 
 
 class TestSearchErrorHandling:

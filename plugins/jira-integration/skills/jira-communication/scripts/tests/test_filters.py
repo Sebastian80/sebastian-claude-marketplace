@@ -2,10 +2,11 @@
 Tests for saved filter endpoints.
 
 Endpoints tested:
-- GET /filters - List all accessible filters
-- GET /filters/my - List my filters
-- GET /filters/favorites - List favorite filters
-- GET /filter/{filter_id} - Get filter details
+- GET /filters - List your favorite filters
+- GET /filter/{filter_id} - Get filter details including JQL
+
+Note: Due to Jira API limitations, /filters returns only favorites.
+Use 'jira filter <id>' to access any filter by ID.
 """
 
 import pytest
@@ -14,21 +15,19 @@ from helpers import run_cli, get_data, run_cli_raw
 
 
 class TestListFilters:
-    """Test /filters endpoint."""
+    """Test /filters endpoint (returns favorite filters)."""
 
     def test_list_filters_basic(self):
-        """Should list all accessible filters."""
-        result = run_cli("jira", "filters", expect_success=False)
+        """Should list favorite filters."""
+        result = run_cli("jira", "filters")
         data = get_data(result)
-        # May return list or error (500 from Jira API)
-        assert isinstance(data, (list, dict, str))
+        assert isinstance(data, list)
 
     def test_list_filters_json_format(self):
         """Should return JSON format by default."""
-        result = run_cli("jira", "filters", "--format", "json", expect_success=False)
+        result = run_cli("jira", "filters", "--format", "json")
         data = get_data(result)
-        # May return list or error (500 from Jira API)
-        assert isinstance(data, (list, dict, str))
+        assert isinstance(data, list)
 
     def test_list_filters_human_format(self):
         """Should format filters for human reading."""
@@ -47,44 +46,14 @@ class TestListFilters:
 
     def test_list_filters_structure(self):
         """Filters should have expected structure if present."""
-        result = run_cli("jira", "filters", expect_success=False)
+        result = run_cli("jira", "filters")
         data = get_data(result)
         if isinstance(data, list) and len(data) > 0:
             filter_obj = data[0]
-            # Filters have: id, name, jql, (optionally) description, owner
-            assert "id" in filter_obj or "name" in filter_obj
-
-
-class TestMyFilters:
-    """Test /filters/my endpoint."""
-
-    def test_list_my_filters_basic(self):
-        """Should list filters owned by current user."""
-        result = run_cli("jira", "filters/my", expect_success=False)
-        data = get_data(result)
-        # May return list or error
-        assert isinstance(data, (list, dict, str))
-
-    def test_list_my_filters_human_format(self):
-        """Should format my filters for human reading."""
-        stdout, stderr, code = run_cli_raw("jira", "filters/my", "--format", "human")
-        assert code == 0
-
-
-class TestFavoriteFilters:
-    """Test /filters/favorites endpoint."""
-
-    def test_list_favorite_filters_basic(self):
-        """Should list favorite filters."""
-        result = run_cli("jira", "filters/favorites", expect_success=False)
-        data = get_data(result)
-        # May return list or error
-        assert isinstance(data, (list, dict, str))
-
-    def test_list_favorite_filters_human_format(self):
-        """Should format favorite filters for human reading."""
-        stdout, stderr, code = run_cli_raw("jira", "filters/favorites", "--format", "human")
-        assert code == 0
+            # Filters have: id, name, jql, owner
+            assert "id" in filter_obj
+            assert "name" in filter_obj
+            assert "jql" in filter_obj
 
 
 class TestGetFilter:

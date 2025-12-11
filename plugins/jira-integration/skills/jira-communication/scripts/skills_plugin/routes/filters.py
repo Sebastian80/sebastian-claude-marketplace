@@ -1,11 +1,19 @@
 """
 Saved filter operations.
 
+Manage saved JQL queries (filters) in Jira. Filters let you save and reuse
+complex JQL searches.
+
 Endpoints:
-- GET /filters - List all accessible filters
-- GET /filters/my - List my filters
-- GET /filters/favorites - List favorite filters
-- GET /filter/{filter_id} - Get filter details
+- GET /filters - List your favorite filters
+- GET /filter/{filter_id} - Get filter details including JQL
+
+Note: Jira's REST API only provides access to your favorite filters.
+To access a specific filter, use its ID with 'jira filter <id>'.
+
+Examples:
+    jira filters              # List your favorite filters
+    jira filter 12345         # Get filter details + JQL query
 """
 
 from fastapi import APIRouter, HTTPException, Query
@@ -19,10 +27,15 @@ router = APIRouter()
 async def list_filters(
     format: str = Query("json", description="Output format: json, human, ai, markdown"),
 ):
-    """List all accessible filters.
+    """List your favorite filters.
 
-    Returns saved JQL filters you have access to.
-    Use filter IDs to quickly run saved searches.
+    Returns filters you have marked as favorites in Jira.
+    These are saved JQL queries you can quickly reuse.
+
+    To get the JQL of a filter: jira filter <filter_id>
+
+    Note: Due to Jira API limitations, this only shows favorites.
+    To access any filter by ID, use 'jira filter <id>'.
 
     Examples:
         jira filters
@@ -30,51 +43,17 @@ async def list_filters(
     """
     client = await get_client()
     try:
-        filters = client.get_all_filters()
+        # Use REST API directly - get favorite filters
+        endpoint = "rest/api/2/filter/favourite"
+        response = client._session.get(f"{client.url}/{endpoint}")
+        response.raise_for_status()
+        filters = response.json()
         return formatted_response(filters, format, "filters")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/filters/my")
-async def list_my_filters(
-    format: str = Query("json", description="Output format: json, human, ai, markdown"),
-):
-    """List my filters.
-
-    Returns filters owned by the current user.
-    These are filters you have created.
-
-    Examples:
-        jira filters my
-        jira filters my --format human
-    """
-    client = await get_client()
-    try:
-        filters = client.my_filters()
-        return formatted_response(filters, format, "my_filters")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/filters/favorites")
-async def list_favorite_filters(
-    format: str = Query("json", description="Output format: json, human, ai, markdown"),
-):
-    """List favorite filters.
-
-    Returns filters marked as favorites by the current user.
-    Quick access to your most-used saved searches.
-
-    Examples:
-        jira filters favorites
-        jira filters favorites --format human
-    """
-    client = await get_client()
-    try:
-        filters = client.favourite_filters()
-        return formatted_response(filters, format, "favorite_filters")
-    except Exception as e:
+        error_msg = str(e).lower()
+        if "404" in error_msg or "not found" in error_msg:
+            # No favorites - return empty list
+            return formatted_response([], format, "filters")
         raise HTTPException(status_code=500, detail=str(e))
 
 
