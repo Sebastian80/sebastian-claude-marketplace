@@ -240,8 +240,12 @@ def request(path: str, params: dict, method: str = "GET") -> dict | str:
     return {"success": False, "error": f"Connection failed after {MAX_RETRIES} retries: {reason}"}
 
 
-def parse_args(args: list[str]) -> tuple[dict, str]:
-    """Parse CLI args to params dict and HTTP method."""
+def parse_args(args: list[str]) -> tuple[dict, str, list[str]]:
+    """Parse CLI args to params dict, HTTP method, and positional path segments.
+
+    Positional args become path segments: "user me" → "/user/me"
+    Named args become query params: "--jql 'foo'" → "?jql=foo"
+    """
     params = {}
     method = "GET"
     i = 0
@@ -280,13 +284,6 @@ def parse_args(args: list[str]) -> tuple[dict, str]:
             positionals.append(arg)
             i += 1
 
-    # Positional args not supported in generic client
-    # Use named args: --pattern X, --file Y, etc.
-    # Plugin-specific CLIs can add smarter positional handling
-    if positionals:
-        print(f"{YELLOW}Warning:{RESET} Positional args ignored. Use --param value", file=sys.stderr)
-        print(f"  Got: {positionals}", file=sys.stderr)
-
     # POST for write operations (body=True for include_body is NOT a write op)
     if any(k in params for k in ("content", "code", "new_name")):
         method = "POST"
@@ -294,7 +291,7 @@ def parse_args(args: list[str]) -> tuple[dict, str]:
     if "body" in params and isinstance(params["body"], str):
         method = "POST"
 
-    return params, method
+    return params, method, positionals
 
 
 # Commands that require POST method (checked against last path segment for nested commands)
@@ -556,12 +553,18 @@ def main():
         print(f"{RED}Error:{RESET} Could not start daemon", file=sys.stderr)
         sys.exit(1)
 
-    params, method = parse_args(rest)
+    params, method, positionals = parse_args(rest)
+    # Build path: command + positional args joined with /
+    # "jira issue HMKG-123" → plugin=jira, command=issue, positionals=[HMKG-123] → /jira/issue/HMKG-123
+    # "jira user me" → plugin=jira, command=user, positionals=[me] → /jira/user/me
+    path_parts = [command] + positionals if positionals else [command]
+    full_path = "/".join(path_parts)
+
     # Force POST for certain commands (check last segment for nested commands like memory/delete)
-    cmd_action = command.split("/")[-1] if "/" in command else command
+    cmd_action = full_path.split("/")[-1] if "/" in full_path else full_path
     if cmd_action in POST_COMMANDS:
         method = "POST"
-    result = request(f"{plugin}/{command}", params, method)
+    result = request(f"{plugin}/{full_path}", params, method)
     print(format_result(result, fmt))
 
     # Check for explicit failure (only for dict responses)
