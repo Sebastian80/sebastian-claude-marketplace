@@ -186,7 +186,9 @@ def request(path: str, params: dict, method: str = "GET") -> dict | str:
     Returns:
         dict for JSON responses, str for plain text responses (format=human/ai/markdown)
     """
-    url = f"{config.daemon_url}/{path}"
+    # URL-encode path segments to handle spaces and special characters
+    encoded_path = "/".join(urllib.parse.quote(seg, safe="") for seg in path.split("/"))
+    url = f"{config.daemon_url}/{encoded_path}"
     # Always use query params (FastAPI endpoints expect Query params)
     clean = {k: v for k, v in params.items() if v is not None}
     if clean:
@@ -298,7 +300,96 @@ def parse_args(args: list[str]) -> tuple[dict, str, list[str]]:
 POST_COMMANDS = {
     "activate", "write", "replace", "after", "before", "rename", "delete", "move", "archive",
     "init_memories",  # Creates memory folder structure
+    "create", "link", "comment", "transition", "discover",  # Jira write operations
 }
+
+
+def validate_params(plugin: str, command: str, params: dict) -> None:
+    """Validate params against known command parameters.
+
+    Warns about unknown parameters to catch typos. Does not block execution.
+    """
+    try:
+        help_result = request(f"{plugin}/help", {"command": command})
+        if not isinstance(help_result, dict) or "parameters" not in help_result:
+            return  # Can't validate without help info
+
+        # Get known param names (both actual name and alias)
+        known_params = set()
+        for param in help_result.get("parameters", []):
+            name = param.get("name", "")
+            if name:
+                # Add both underscore and hyphen versions
+                known_params.add(name)
+                known_params.add(name.replace("-", "_"))
+                known_params.add(name.replace("_", "-"))
+
+        # Check for unknown params
+        unknown = []
+        for param_name in params:
+            normalized = param_name.replace("-", "_")
+            if normalized not in known_params and param_name not in known_params:
+                unknown.append(param_name)
+
+        if unknown:
+            # Suggest similar params
+            for unk in unknown:
+                similar = find_similar_param(unk, known_params)
+                if similar:
+                    print(f"{YELLOW}Warning:{RESET} Unknown parameter '--{unk}'. Did you mean '--{similar}'?", file=sys.stderr)
+                else:
+                    print(f"{YELLOW}Warning:{RESET} Unknown parameter '--{unk}'", file=sys.stderr)
+
+    except Exception:
+        pass  # Validation failure shouldn't break command execution
+
+
+def find_similar_param(param: str, known: set) -> str | None:
+    """Find similar parameter name for typo suggestions."""
+    param_lower = param.lower().replace("_", "").replace("-", "")
+
+    for known_param in known:
+        known_lower = known_param.lower().replace("_", "").replace("-", "")
+        # Check prefix match (e.g., "proj" matches "project")
+        if known_lower.startswith(param_lower) or param_lower.startswith(known_lower):
+            return known_param
+        # Check if most chars match (simple similarity)
+        common = sum(1 for c in param_lower if c in known_lower)
+        if common >= len(param_lower) * 0.7:
+            return known_param
+
+    return None
+
+
+def format_validation_error(details: list) -> str:
+    """Format FastAPI validation errors into friendly messages."""
+    lines = [f"{RED}Error:{RESET} Invalid parameters"]
+
+    for error in details:
+        error_type = error.get("type", "unknown")
+        loc = error.get("loc", [])
+        msg = error.get("msg", "")
+
+        # Extract parameter name from location (e.g., ['query', 'project'] -> 'project')
+        param_name = loc[-1] if loc else "unknown"
+        param_source = loc[0] if len(loc) > 1 else ""
+
+        if error_type == "missing":
+            lines.append(f"  {YELLOW}Missing required parameter:{RESET} --{param_name}")
+        elif error_type == "string_type":
+            lines.append(f"  {YELLOW}Invalid value for --{param_name}:{RESET} expected string")
+        elif error_type == "int_parsing":
+            lines.append(f"  {YELLOW}Invalid value for --{param_name}:{RESET} expected integer")
+        elif error_type == "bool_parsing":
+            lines.append(f"  {YELLOW}Invalid value for --{param_name}:{RESET} expected true/false")
+        else:
+            # Generic error
+            lines.append(f"  {YELLOW}--{param_name}:{RESET} {msg}")
+
+    lines.append("")
+    lines.append(f"{DIM}Hint: Use --help to see required parameters{RESET}")
+
+    return "\n".join(lines)
 
 
 def format_result(result: dict | str, fmt: str) -> str:
@@ -306,6 +397,10 @@ def format_result(result: dict | str, fmt: str) -> str:
     # Handle plain text responses (already formatted by daemon)
     if isinstance(result, str):
         return result
+
+    # Handle FastAPI validation errors (422 responses)
+    if "detail" in result and isinstance(result["detail"], list):
+        return format_validation_error(result["detail"])
 
     # Handle explicit error responses
     if result.get("success") is False:
@@ -448,11 +543,19 @@ def format_help(result: dict, fmt: str = "compact") -> str:
         desc = result.get("description", "")
         path = result.get("path", "")
         methods = ", ".join(result.get("methods", []))
+        usage = result.get("usage", "")
+        examples = result.get("examples", [])
 
         lines.append(f"{BOLD}{plugin} {name}{RESET} - {summary}")
         if desc:
             lines.append(f"{desc}")
         lines.append("")
+
+        # Show usage hint
+        if usage:
+            lines.append(f"{BOLD}Usage:{RESET} {usage}")
+            lines.append("")
+
         lines.append(f"{DIM}Path: {path}  Methods: {methods}{RESET}")
 
         params = result.get("parameters", [])
@@ -472,6 +575,13 @@ def format_help(result: dict, fmt: str = "compact") -> str:
                 if default is not None:
                     line += f" {DIM}(default: {default}){RESET}"
                 lines.append(line)
+
+        # Show examples if available
+        if examples:
+            lines.append("")
+            lines.append(f"{BOLD}Examples:{RESET}")
+            for ex in examples:
+                lines.append(f"  {CYAN}{ex}{RESET}")
 
     return "\n".join(lines)
 
@@ -560,9 +670,26 @@ def main():
     path_parts = [command] + positionals if positionals else [command]
     full_path = "/".join(path_parts)
 
-    # Force POST for certain commands (check last segment for nested commands like memory/delete)
-    cmd_action = full_path.split("/")[-1] if "/" in full_path else full_path
-    if cmd_action in POST_COMMANDS:
+    # Validate parameters against known params (warn about typos/unknown params)
+    if params:
+        validate_params(plugin, full_path, params)
+
+    # Force POST for certain commands
+    # Check both: command itself AND last segment (for nested commands like memory/delete)
+    # But exclude read-only nested routes (like link/types)
+    path_segments = full_path.split("/")
+    cmd_first = path_segments[0]  # e.g., "transition" from "transition/OROSPD-589"
+    cmd_last = path_segments[-1]  # e.g., "delete" from "memory/delete"
+
+    # Commands where the base name is POST but nested paths might be GET
+    READ_ONLY_NESTED = {"types", "workflows"}  # link/types, workflow/xxx
+
+    # Use POST if:
+    # 1. First segment is POST command AND last segment isn't a read-only action
+    # 2. OR last segment is a POST command (for memory/delete, workflow/discover)
+    if cmd_first in POST_COMMANDS and cmd_last not in READ_ONLY_NESTED:
+        method = "POST"
+    elif cmd_last in POST_COMMANDS:
         method = "POST"
     result = request(f"{plugin}/{full_path}", params, method)
     print(format_result(result, fmt))

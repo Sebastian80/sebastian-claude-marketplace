@@ -302,8 +302,16 @@ def _generate_plugin_help(plugin) -> dict[str, Any]:
         if name.startswith("_"):
             continue
 
-        # Get metadata from FastAPI route
-        summary = getattr(route, "summary", None) or route.name or name
+        # Get metadata from FastAPI route - prefer description (docstring) over function name
+        # FastAPI stores first line of docstring in summary, full docstring in description
+        summary = getattr(route, "summary", None)
+        if not summary or summary == route.name:
+            # Try to get from endpoint's docstring directly
+            endpoint = getattr(route, "endpoint", None)
+            if endpoint and endpoint.__doc__:
+                summary = endpoint.__doc__.strip().split('\n')[0]
+            else:
+                summary = route.name or name
         methods = list(getattr(route, "methods", ["GET"]))
 
         commands.append({
@@ -346,8 +354,10 @@ def _generate_command_help(plugin, command: str) -> dict[str, Any]:
                     "PydanticUndefined" in default_val.__class__.__name__
                 )
 
+                # Use alias if defined (e.g., Query(..., alias="type"))
+                display_name = getattr(param.field_info, "alias", None) or param.name
                 param_info = {
-                    "name": param.name,
+                    "name": display_name,
                     "in": "query",
                     "required": is_required,
                 }
@@ -372,14 +382,51 @@ def _generate_command_help(plugin, command: str) -> dict[str, Any]:
                     "required": True,
                 })
 
+        # Extract docstring and examples
+        endpoint = getattr(route, "endpoint", None)
+        docstring = ""
+        examples = []
+        if endpoint and endpoint.__doc__:
+            doc_lines = endpoint.__doc__.strip().split('\n')
+            # First line is summary, rest is description
+            doc_parts = []
+            in_examples = False
+            for line in doc_lines[1:]:  # Skip first line (summary)
+                stripped = line.strip()
+                if stripped.lower().startswith('example'):
+                    in_examples = True
+                    continue
+                if in_examples:
+                    if stripped.startswith('jira ') or stripped.startswith('skills-client '):
+                        examples.append(stripped)
+                    elif stripped and not stripped.startswith('#'):
+                        # Non-empty, non-comment line ends examples section
+                        if not stripped.startswith('-'):
+                            in_examples = False
+                else:
+                    doc_parts.append(line.rstrip())
+            docstring = '\n'.join(doc_parts).strip()
+
+        # Generate usage hint
+        required_params = [p["name"] for p in params if p.get("required") and p.get("in") == "query"]
+        path_params = [p["name"] for p in params if p.get("in") == "path"]
+        usage_parts = [f"jira {command}"]
+        for pp in path_params:
+            usage_parts.append(f"<{pp}>")
+        for rp in required_params:
+            usage_parts.append(f"--{rp} <value>")
+        usage = " ".join(usage_parts)
+
         return {
             "plugin": plugin.name,
             "command": command,
             "path": f"/{plugin.name}{route.path}",
             "summary": getattr(route, "summary", "") or route.name or command,
-            "description": getattr(route, "description", "") or "",
+            "description": docstring or getattr(route, "description", "") or "",
             "methods": list(getattr(route, "methods", ["GET"])),
             "parameters": params,
+            "usage": usage,
+            "examples": examples,
         }
 
     # Command not found
