@@ -1,8 +1,22 @@
-"""Pytest configuration for Jira plugin tests."""
+"""Pytest configuration for Jira plugin tests.
+
+This file configures pytest options and fixtures. Shared helper functions
+are in helpers.py to avoid import issues.
+"""
 
 import subprocess
+import sys
+from pathlib import Path
+
 import pytest
 
+# Add tests directory to path for helpers import
+sys.path.insert(0, str(Path(__file__).parent))
+
+
+# ==============================================================================
+# Pytest Hooks
+# ==============================================================================
 
 def pytest_addoption(parser):
     """Add custom command line options."""

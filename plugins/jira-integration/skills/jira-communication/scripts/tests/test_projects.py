@@ -8,48 +8,9 @@ Endpoints tested:
 - GET /project/{key}/versions - Get project versions
 """
 
-import json
-import subprocess
 import pytest
 
-
-TEST_PROJECT = "OROSPD"
-TEST_ISSUE = "OROSPD-589"
-
-
-def run_cli(*args, expect_success=True) -> dict | list | str:
-    """Run skills-client command and return parsed result."""
-    cmd = ["skills-client", "--json"] + list(args)
-    result = subprocess.run(cmd, capture_output=True, text=True)
-
-    output = result.stdout.strip()
-    if not output:
-        output = result.stderr.strip()
-
-    try:
-        parsed = json.loads(output)
-        if expect_success and isinstance(parsed, dict):
-            if parsed.get("success") is False:
-                pytest.fail(f"Command failed: {parsed.get('error')}")
-            if "detail" in parsed:
-                pytest.fail(f"Validation error: {parsed['detail']}")
-        return parsed
-    except json.JSONDecodeError:
-        return output
-
-
-def get_data(result) -> list | dict | str:
-    """Extract data from API response."""
-    if isinstance(result, dict):
-        return result.get("data", result)
-    return result
-
-
-def run_cli_raw(*args) -> tuple[str, str, int]:
-    """Run skills-client and return raw stdout, stderr, returncode."""
-    cmd = ["skills-client"] + list(args)
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    return result.stdout, result.stderr, result.returncode
+from helpers import TEST_PROJECT, TEST_ISSUE, run_cli, get_data, run_cli_raw
 
 
 class TestListProjects:
