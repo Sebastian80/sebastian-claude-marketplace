@@ -37,15 +37,16 @@ RED, GREEN, YELLOW, CYAN, DIM, BOLD, RESET = get_color_tuple()
 
 
 def is_port_in_use(port: int = None) -> bool:
-    """Check if daemon port is in use by attempting to bind (most reliable)."""
+    """Check if daemon port is in use by attempting IPv6 connect (bypasses ESET)."""
     if port is None:
         port = config.port
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+    with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
         try:
-            s.bind(("127.0.0.1", port))
-            return False  # Bind succeeded = port is free
-        except OSError:
-            return True  # Bind failed = port is in use
+            s.connect(("::1", port))
+            return True  # Connection succeeded = something is listening
+        except (OSError, socket.timeout):
+            return False  # Connection failed = port is free
 
 
 def is_daemon_healthy() -> bool:

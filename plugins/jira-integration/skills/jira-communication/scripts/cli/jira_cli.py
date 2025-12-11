@@ -29,7 +29,7 @@ from typing import Optional
 # Configuration
 # ═══════════════════════════════════════════════════════════════════════════════
 
-DAEMON_URL = "http://127.0.0.1:9100"
+DAEMON_URL = "http://[::1]:9100"  # IPv6 loopback bypasses ESET IPv4 interception
 DAEMON_PORT = 9100
 PID_FILE = "/tmp/skills-daemon.pid"
 LOCK_FILE = "/tmp/skills-daemon.lock"
@@ -49,12 +49,14 @@ else:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def is_port_in_use(port: int = DAEMON_PORT) -> bool:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+    """Check if daemon port is in use by attempting IPv6 connect (bypasses ESET)."""
+    with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
         try:
-            s.bind(("127.0.0.1", port))
-            return False
-        except OSError:
-            return True
+            s.connect(("::1", port))
+            return True  # Connection succeeded = something is listening
+        except (OSError, socket.timeout):
+            return False  # Connection failed = port is free
 
 
 def is_daemon_healthy() -> bool:

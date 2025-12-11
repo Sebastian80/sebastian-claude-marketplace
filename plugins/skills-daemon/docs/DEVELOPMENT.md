@@ -139,7 +139,7 @@ All config uses `SKILLS_DAEMON_` prefix:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SKILLS_DAEMON_HOST` | `127.0.0.1` | Bind address |
+| `SKILLS_DAEMON_HOST` | `::` | Bind address (dual-stack IPv4/IPv6) |
 | `SKILLS_DAEMON_PORT` | `9100` | Port number |
 | `SKILLS_DAEMON_TIMEOUT` | `1800` | Idle timeout (seconds) |
 | `SKILLS_DAEMON_SHUTDOWN_TIMEOUT` | `10` | Shutdown timeout (seconds) |
@@ -161,7 +161,7 @@ from skills_daemon.config import config
 
 print(config.port)           # 9100
 print(config.log_level)      # INFO
-print(config.daemon_url)     # http://127.0.0.1:9100
+print(config.daemon_url)     # http://[::1]:9100 (explicit IPv6 for ESET compatibility)
 ```
 
 ## Logging
@@ -291,7 +291,7 @@ tail -f ~/.local/share/skills-daemon/logs/daemon.log | jq .
 skills-client health
 
 # Or directly
-curl http://127.0.0.1:9100/health | jq .
+curl http://localhost:9100/health | jq .
 ```
 
 ### Slow Request Detection
@@ -430,5 +430,6 @@ raise HTTPException(status_code=404, detail="Not found")
 ### Connection Errors
 
 1. Verify daemon running: `skills-daemon status`
-2. Check firewall: `curl http://127.0.0.1:9100/health`
+2. Check firewall: `curl http://localhost:9100/health`
 3. Client auto-starts daemon, wait 3 seconds
+4. Note: CLIs use IPv6 `[::1]` to bypass ESET loopback interception

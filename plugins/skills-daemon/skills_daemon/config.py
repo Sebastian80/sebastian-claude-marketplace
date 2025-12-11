@@ -6,11 +6,14 @@ Configuration sources (priority order):
 2. Default values
 
 Environment variables:
-- SKILLS_DAEMON_HOST: Bind address (default: 127.0.0.1)
+- SKILLS_DAEMON_HOST: Bind address (default: :: for dual-stack IPv4/IPv6)
 - SKILLS_DAEMON_PORT: Port number (default: 9100)
 - SKILLS_DAEMON_TIMEOUT: Idle timeout in seconds (default: 1800)
 - SKILLS_DAEMON_LOG_LEVEL: Log level (default: INFO)
 - SKILLS_DAEMON_RUNTIME_DIR: Runtime directory (default: ~/.local/share/skills-daemon)
+
+Note: Dual-stack binding (::) ensures compatibility with security software like ESET
+that intercepts loopback traffic. Always use 'localhost' in URLs, not '127.0.0.1'.
 """
 
 import os
@@ -42,7 +45,7 @@ def _get_env_path(key: str, default: Path) -> Path:
 class DaemonConfig:
     """Immutable daemon configuration."""
 
-    host: str = _get_env("HOST", "127.0.0.1")
+    host: str = _get_env("HOST", "::")  # Dual-stack: listens on both IPv4 and IPv6
     port: int = _get_env_int("PORT", 9100)
     idle_timeout: int = _get_env_int("TIMEOUT", 1800)
     shutdown_timeout: int = _get_env_int("SHUTDOWN_TIMEOUT", 10)
@@ -82,8 +85,13 @@ class DaemonConfig:
 
     @property
     def daemon_url(self) -> str:
-        """Full daemon URL."""
-        return f"http://{self.host}:{self.port}"
+        """Full daemon URL.
+
+        Uses explicit IPv6 loopback [::1] to bypass ESET interception of IPv4.
+        Python's urllib tries IPv4 first when using 'localhost', but ESET
+        intercepts IPv4 loopback and resets the connection.
+        """
+        return f"http://[::1]:{self.port}"
 
     def ensure_dirs(self) -> None:
         """Create runtime directories if they don't exist."""

@@ -51,7 +51,7 @@ skills-client plugins
 skills-client <plugin> <command> [--param value]
 
 # View API documentation
-curl http://127.0.0.1:9100/docs
+curl http://localhost:9100/docs
 ```
 
 ## Installation
@@ -104,9 +104,9 @@ skills-client <plugin> <command>
 
 Interactive API docs available when daemon is running:
 
-- **Swagger UI**: http://127.0.0.1:9100/docs
-- **OpenAPI JSON**: http://127.0.0.1:9100/openapi.json
-- **Plugin List**: http://127.0.0.1:9100/plugins
+- **Swagger UI**: http://localhost:9100/docs
+- **OpenAPI JSON**: http://localhost:9100/openapi.json
+- **Plugin List**: http://localhost:9100/plugins
 
 ## Directory Structure
 
@@ -236,7 +236,7 @@ Plugins can support multiple output formats via `?format=` parameter:
 
 | Setting | Default | Environment Variable |
 |---------|---------|---------------------|
-| Host | `127.0.0.1` | `SKILLS_DAEMON_HOST` |
+| Host | `::` (dual-stack) | `SKILLS_DAEMON_HOST` |
 | Port | `9100` | `SKILLS_DAEMON_PORT` |
 | Idle timeout | `1800s` (30min) | `SKILLS_DAEMON_TIMEOUT` |
 | Shutdown timeout | `10s` | `SKILLS_DAEMON_SHUTDOWN_TIMEOUT` |
@@ -277,7 +277,7 @@ cat ~/.local/share/skills-daemon/logs/daemon.log | jq .
 ### Health Check
 
 ```bash
-curl http://127.0.0.1:9100/health
+curl http://localhost:9100/health
 # Returns: {"status":"running","version":"1.0.0","plugins":[...],...}
 ```
 
@@ -293,8 +293,8 @@ uv pip install -e ".[dev]"
 PYTHONPATH="$PWD" .venv/bin/python -m skills_daemon.main
 
 # Test endpoints
-curl http://127.0.0.1:9100/health
-curl http://127.0.0.1:9100/plugins
+curl http://localhost:9100/health
+curl http://localhost:9100/plugins
 ```
 
 ## Dependencies

@@ -12,16 +12,16 @@ class TestConfig:
         """Config has sensible defaults."""
         config = DaemonConfig()
 
-        assert config.host == "127.0.0.1"
+        assert config.host == "::"  # Dual-stack for ESET compatibility
         assert config.port == 9100
         assert config.idle_timeout == 1800
         assert config.log_level == "INFO"
 
     def test_daemon_url_property(self):
-        """daemon_url combines host and port."""
+        """daemon_url uses IPv6 loopback to bypass ESET."""
         config = DaemonConfig()
 
-        assert config.daemon_url == "http://127.0.0.1:9100"
+        assert config.daemon_url == "http://[::1]:9100"
 
     def test_env_override_host(self, monkeypatch):
         """Environment variables override defaults."""
@@ -29,7 +29,7 @@ class TestConfig:
 
         # Need to reimport to pick up new env
         config = DaemonConfig(
-            host=os.environ.get("SKILLS_DAEMON_HOST", "127.0.0.1")
+            host=os.environ.get("SKILLS_DAEMON_HOST", "::")
         )
 
         assert config.host == "0.0.0.0"
