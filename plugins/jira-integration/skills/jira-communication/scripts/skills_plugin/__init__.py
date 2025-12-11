@@ -1,5 +1,5 @@
 """
-Jira plugin for skills daemon.
+Jira plugin for AI Tool Bridge.
 
 Provides Jira issue tracking and workflow automation via persistent connection.
 
@@ -19,11 +19,6 @@ Usage:
 
 import sys
 from pathlib import Path
-
-# Add skills-daemon to path for SkillPlugin base class
-SKILLS_DAEMON = Path(__file__).parent.parent.parent.parent.parent.parent / "skills-daemon"
-if str(SKILLS_DAEMON) not in sys.path:
-    sys.path.insert(0, str(SKILLS_DAEMON))
 
 # Add lib/ to path for shared Jira utilities
 LIB_PATH = Path(__file__).parent.parent

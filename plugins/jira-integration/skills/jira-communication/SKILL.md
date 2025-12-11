@@ -13,7 +13,7 @@ description: >
 
 # Jira Communication
 
-Unified `jira` CLI for all Jira operations via skills-daemon.
+Unified `jira` CLI for all Jira operations via AI Tool Bridge daemon.
 
 ## The Iron Law
 
@@ -38,9 +38,9 @@ Fetching takes 2 seconds. Guessing wastes the user's time when you're wrong.
 ```
 jira <command> [args] [--params]
     ↓
-skills-client jira <command> [args] [--params]
+bridge jira <command> [args] [--params]
     ↓ HTTP
-skills-daemon (FastAPI on port 9100)
+AI Tool Bridge daemon (FastAPI on port 9100)
     ↓
 Jira API
 ```
@@ -108,8 +108,8 @@ jira health                            # Check connection
 
 ```bash
 jira --help                    # List all commands
-skills-client jira --help      # Same thing
-skills-client jira issue --help  # Command-specific help
+bridge jira --help             # Same thing
+bridge jira issue --help       # Command-specific help
 ```
 
 Help is generated from daemon's FastAPI metadata - always current.

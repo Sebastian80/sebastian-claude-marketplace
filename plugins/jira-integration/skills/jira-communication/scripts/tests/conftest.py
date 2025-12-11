@@ -49,11 +49,11 @@ def pytest_collection_modifyitems(config, items):
 
 @pytest.fixture(scope="session", autouse=True)
 def ensure_daemon_running():
-    """Ensure skills daemon is running before tests."""
+    """Ensure bridge daemon is running before tests."""
     result = subprocess.run(
-        ["skills-client", "health"],
+        ["bridge", "health"],
         capture_output=True,
         text=True
     )
-    if result.returncode != 0 or "running" not in result.stdout:
-        pytest.skip("Skills daemon not running. Start with: skills-daemon start")
+    if result.returncode != 0 or "ok" not in result.stdout.lower():
+        pytest.skip("Bridge daemon not running. Start with: bridge start")

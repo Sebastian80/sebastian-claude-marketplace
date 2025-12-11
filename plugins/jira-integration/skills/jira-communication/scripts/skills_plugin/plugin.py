@@ -2,7 +2,7 @@
 Jira plugin class.
 
 Thin wrapper that:
-- Implements SkillPlugin interface
+- Implements PluginProtocol interface (structural typing)
 - Wires together routes from routes/
 - Manages lifecycle (startup, connect, shutdown)
 - Provides health checks
@@ -15,15 +15,13 @@ from typing import Any
 
 from fastapi import APIRouter
 
-from skills_daemon.plugins import SkillPlugin
-
 from .routes import create_router
 from . import client
 
 logger = logging.getLogger("jira_plugin")
 
 
-class JiraPlugin(SkillPlugin):
+class JiraPlugin:
     """Jira issue tracking and workflow automation plugin.
 
     Provides:

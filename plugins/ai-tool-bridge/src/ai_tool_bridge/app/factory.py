@@ -44,21 +44,21 @@ def create_app(
         on_idle=signal_handler.trigger_shutdown if signal_handler else None,
     )
 
+    # Register builtin formatters (synchronous)
+    register_builtin_formatters()
+
+    # Discover and load plugins BEFORE creating app (so routes can be mounted)
+    _load_plugins_sync(config)
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         """Manage application lifecycle."""
         logger.info("bridge_starting", version="1.0.0")
 
-        # Register builtin formatters
-        register_builtin_formatters()
-
-        # Discover and load plugins
-        await _load_plugins(config)
-
         # Connect all connectors
         await connector_registry.connect_all()
 
-        # Start all plugins
+        # Start all plugins (async startup)
         await plugin_registry.startup_all()
 
         # Start idle monitoring
@@ -97,9 +97,10 @@ def create_app(
     # Mount core routes
     app.include_router(core_router)
 
-    # Mount plugin routes
+    # Mount plugin routes (plugins already loaded)
     for prefix, plugin_router in plugin_registry.get_routers():
         app.include_router(plugin_router, prefix=prefix)
+        logger.debug("plugin_routes_mounted", prefix=prefix)
 
     # Store config and components on app state
     app.state.config = config
@@ -108,8 +109,10 @@ def create_app(
     return app
 
 
-async def _load_plugins(config: BridgeConfig) -> None:
-    """Discover and load all plugins.
+def _load_plugins_sync(config: BridgeConfig) -> None:
+    """Discover and load all plugins synchronously.
+
+    Called during app creation so routes can be mounted.
 
     Args:
         config: Bridge configuration

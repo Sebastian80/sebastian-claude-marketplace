@@ -1,24 +1,19 @@
 """
-Jira-specific formatters for skills-daemon.
+Jira-specific formatters for AI Tool Bridge.
 
 Uses Rich library for beautiful terminal output with tables, panels, and colors.
 """
 
 import os
-import sys
 from io import StringIO
 from pathlib import Path
 from typing import Any
 
-# Import base formatters from daemon
-SKILLS_DAEMON = Path(__file__).parent.parent.parent.parent.parent.parent / "skills-daemon"
-if str(SKILLS_DAEMON) not in sys.path:
-    sys.path.insert(0, str(SKILLS_DAEMON))
-
-from skills_daemon.formatters import (
-    BaseFormatter, HumanFormatter, JsonFormatter, AIFormatter, MarkdownFormatter,
-    formatter_registry
+# Import base formatters from ai-tool-bridge
+from ai_tool_bridge.builtins.formatters import (
+    HumanFormatter, JsonFormatter, AIFormatter, MarkdownFormatter,
 )
+from ai_tool_bridge.formatters import formatter_registry
 
 # Rich imports
 from rich.console import Console
@@ -883,45 +878,45 @@ class JiraWorklogsAIFormatter(AIFormatter):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def register_jira_formatters():
-    """Register all Jira formatters with the daemon."""
-    formatter_registry.register("jira", "issue", "human", JiraIssueHumanFormatter)
-    formatter_registry.register("jira", "issue", "ai", JiraIssueAIFormatter)
-    formatter_registry.register("jira", "issue", "markdown", JiraIssueMarkdownFormatter)
+    """Register all Jira formatters with the bridge."""
+    # Issue formatters
+    formatter_registry.register("jira", "issue", "human", JiraIssueHumanFormatter())
+    formatter_registry.register("jira", "issue", "ai", JiraIssueAIFormatter())
+    formatter_registry.register("jira", "issue", "markdown", JiraIssueMarkdownFormatter())
 
-    formatter_registry.register("jira", "search", "human", JiraSearchHumanFormatter)
-    formatter_registry.register("jira", "search", "ai", JiraSearchAIFormatter)
-    formatter_registry.register("jira", "search", "markdown", JiraSearchMarkdownFormatter)
+    # Search formatters
+    formatter_registry.register("jira", "search", "human", JiraSearchHumanFormatter())
+    formatter_registry.register("jira", "search", "ai", JiraSearchAIFormatter())
+    formatter_registry.register("jira", "search", "markdown", JiraSearchMarkdownFormatter())
 
-    formatter_registry.register("jira", "transitions", "human", JiraTransitionsHumanFormatter)
-    formatter_registry.register("jira", "transitions", "ai", JiraTransitionsAIFormatter)
+    # Transitions formatters
+    formatter_registry.register("jira", "transitions", "human", JiraTransitionsHumanFormatter())
+    formatter_registry.register("jira", "transitions", "ai", JiraTransitionsAIFormatter())
 
-    formatter_registry.register("jira", "comments", "human", JiraCommentsHumanFormatter)
-    formatter_registry.register("jira", "comments", "ai", JiraCommentsAIFormatter)
+    # Comments formatters
+    formatter_registry.register("jira", "comments", "human", JiraCommentsHumanFormatter())
+    formatter_registry.register("jira", "comments", "ai", JiraCommentsAIFormatter())
 
     # Link types formatters
-    formatter_registry.register("jira", "linktypes", "human", JiraLinkTypesHumanFormatter)
-    formatter_registry.register("jira", "linktypes", "ai", JiraLinkTypesAIFormatter)
+    formatter_registry.register("jira", "linktypes", "human", JiraLinkTypesHumanFormatter())
+    formatter_registry.register("jira", "linktypes", "ai", JiraLinkTypesAIFormatter())
 
     # Issue links formatters
-    formatter_registry.register("jira", "links", "human", JiraLinksHumanFormatter)
-    formatter_registry.register("jira", "links", "ai", JiraLinksAIFormatter)
+    formatter_registry.register("jira", "links", "human", JiraLinksHumanFormatter())
+    formatter_registry.register("jira", "links", "ai", JiraLinksAIFormatter())
 
     # Watchers formatters
-    formatter_registry.register("jira", "watchers", "human", JiraWatchersHumanFormatter)
-    formatter_registry.register("jira", "watchers", "ai", JiraWatchersAIFormatter)
+    formatter_registry.register("jira", "watchers", "human", JiraWatchersHumanFormatter())
+    formatter_registry.register("jira", "watchers", "ai", JiraWatchersAIFormatter())
 
     # Attachments formatters
-    formatter_registry.register("jira", "attachments", "human", JiraAttachmentsHumanFormatter)
-    formatter_registry.register("jira", "attachments", "ai", JiraAttachmentsAIFormatter)
+    formatter_registry.register("jira", "attachments", "human", JiraAttachmentsHumanFormatter())
+    formatter_registry.register("jira", "attachments", "ai", JiraAttachmentsAIFormatter())
 
     # Web links formatters
-    formatter_registry.register("jira", "weblinks", "human", JiraWebLinksHumanFormatter)
-    formatter_registry.register("jira", "weblinks", "ai", JiraWebLinksAIFormatter)
+    formatter_registry.register("jira", "weblinks", "human", JiraWebLinksHumanFormatter())
+    formatter_registry.register("jira", "weblinks", "ai", JiraWebLinksAIFormatter())
 
     # Worklogs formatters
-    formatter_registry.register("jira", "worklogs", "human", JiraWorklogsHumanFormatter)
-    formatter_registry.register("jira", "worklogs", "ai", JiraWorklogsAIFormatter)
-
-
-# Auto-register on import
-register_jira_formatters()
+    formatter_registry.register("jira", "worklogs", "human", JiraWorklogsHumanFormatter())
+    formatter_registry.register("jira", "worklogs", "ai", JiraWorklogsAIFormatter())

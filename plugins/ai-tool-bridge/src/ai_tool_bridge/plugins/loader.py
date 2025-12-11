@@ -52,18 +52,31 @@ def load_plugin(
 
         module_path, class_name = manifest.entry_point.split(":", 1)
 
-        # Add plugin path to sys.path if needed
+        # Add plugin paths to sys.path for import resolution
+        # The entry_point module name tells us what to look for
+        base_module = module_path.split(".")[0]  # e.g., "skills_plugin"
+
+        # Check if manifest.path IS the module (package directory)
+        if manifest.path.name == base_module and (manifest.path / "__init__.py").exists():
+            # Add parent directory so 'import skills_plugin' works
+            parent_str = str(manifest.path.parent)
+            if parent_str not in sys.path:
+                sys.path.insert(0, parent_str)
+                logger.debug("added_to_path", path=parent_str, reason="parent of package")
+
+        # Also add src/ if it exists (standard layout)
         plugin_src = manifest.path / "src"
         if plugin_src.exists():
             src_str = str(plugin_src)
             if src_str not in sys.path:
                 sys.path.insert(0, src_str)
-                logger.debug("added_to_path", path=src_str)
+                logger.debug("added_to_path", path=src_str, reason="src directory")
 
-        # Also add the plugin root
+        # Also add the plugin root as fallback
         plugin_root = str(manifest.path)
         if plugin_root not in sys.path:
             sys.path.insert(0, plugin_root)
+            logger.debug("added_to_path", path=plugin_root, reason="plugin root")
 
         # Import the module
         try:
@@ -79,10 +92,14 @@ def load_plugin(
 
         plugin_class = getattr(module, class_name)
 
-        # Instantiate with optional context
-        if bridge_context:
-            plugin = plugin_class(bridge_context)
-        else:
+        # Instantiate - try with context first, then without
+        try:
+            if bridge_context:
+                plugin = plugin_class(bridge_context)
+            else:
+                plugin = plugin_class()
+        except TypeError:
+            # Plugin doesn't accept context argument
             plugin = plugin_class()
 
         # Verify it implements the protocol

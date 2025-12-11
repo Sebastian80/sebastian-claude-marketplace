@@ -2,10 +2,10 @@
 Tests for daemon health and Jira plugin connection.
 
 Endpoints tested:
-- skills-client health - Daemon health
+- bridge health - Daemon health
 - GET /health - Jira plugin health
 
-Cross-cutting tests that verify the skills daemon and Jira plugin are operational.
+Cross-cutting tests that verify the bridge daemon and Jira plugin are operational.
 """
 
 import pytest

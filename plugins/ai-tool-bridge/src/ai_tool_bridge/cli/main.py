@@ -9,14 +9,21 @@ Usage:
     bridge health                 Quick health check
     bridge plugins                List loaded plugins
     bridge connectors             List connectors and their state
+    bridge <plugin> <path...>     Route to plugin endpoint
 """
 
 import argparse
+import json
 import sys
+
+import httpx
 
 from ..config import BridgeConfig
 from .client import BridgeClient, print_error, print_status
 from .daemon import daemon_status, restart_daemon, start_daemon, stop_daemon
+
+# Built-in commands (not plugin names)
+BUILTIN_COMMANDS = {"start", "stop", "restart", "status", "health", "plugins", "connectors", "reconnect"}
 
 
 def main(args: list[str] | None = None) -> int:
@@ -28,6 +35,13 @@ def main(args: list[str] | None = None) -> int:
     Returns:
         Exit code
     """
+    if args is None:
+        args = sys.argv[1:]
+
+    # Check if first arg is a plugin name (not a built-in command)
+    if args and args[0] not in BUILTIN_COMMANDS and not args[0].startswith("-"):
+        return run_plugin_command(args)
+
     parser = create_parser()
     parsed = parser.parse_args(args)
 
@@ -41,6 +55,101 @@ def main(args: list[str] | None = None) -> int:
         return run_command(parsed.command, parsed, config)
     except KeyboardInterrupt:
         return 130
+    except Exception as e:
+        print_error(str(e))
+        return 1
+
+
+def run_plugin_command(args: list[str]) -> int:
+    """Route command to a plugin via HTTP.
+
+    Converts CLI args to HTTP request:
+        bridge jira issue KEY --format human
+        -> GET /jira/issue/KEY?format=human
+
+    Args:
+        args: Command line arguments starting with plugin name
+
+    Returns:
+        Exit code
+    """
+    config = BridgeConfig()
+
+    # Parse plugin name and path segments
+    plugin = args[0]
+    remaining = args[1:]
+
+    # Separate path segments from options
+    path_parts = []
+    query_params = {}
+
+    i = 0
+    while i < len(remaining):
+        arg = remaining[i]
+        if arg.startswith("--"):
+            # Option: --key value or --flag
+            key = arg[2:]
+            if i + 1 < len(remaining) and not remaining[i + 1].startswith("-"):
+                query_params[key] = remaining[i + 1]
+                i += 2
+            else:
+                query_params[key] = "true"
+                i += 1
+        elif arg.startswith("-") and len(arg) == 2:
+            # Short option: -k value
+            key = arg[1:]
+            if i + 1 < len(remaining) and not remaining[i + 1].startswith("-"):
+                query_params[key] = remaining[i + 1]
+                i += 2
+            else:
+                query_params[key] = "true"
+                i += 1
+        else:
+            # Path segment
+            path_parts.append(arg)
+            i += 1
+
+    # Build URL
+    path = "/" + plugin + ("/" + "/".join(path_parts) if path_parts else "")
+    url = f"{config.bridge_url}{path}"
+
+    try:
+        with httpx.Client(timeout=30.0) as client:
+            response = client.get(url, params=query_params)
+
+            # Handle response
+            if response.status_code == 200:
+                content_type = response.headers.get("content-type", "")
+                if "application/json" in content_type:
+                    try:
+                        data = response.json()
+                        if isinstance(data, dict) and "data" in data:
+                            # Unwrap success response
+                            print(json.dumps(data["data"], indent=2))
+                        else:
+                            print(json.dumps(data, indent=2))
+                    except json.JSONDecodeError:
+                        print(response.text)
+                else:
+                    # Plain text response (human/ai/markdown format)
+                    print(response.text)
+                return 0
+            else:
+                try:
+                    error = response.json()
+                    if "detail" in error:
+                        print_error(error["detail"])
+                    elif "error" in error:
+                        print_error(error["error"])
+                    else:
+                        print_error(response.text)
+                except json.JSONDecodeError:
+                    print_error(f"HTTP {response.status_code}: {response.text}")
+                return 1
+
+    except httpx.ConnectError:
+        print_error("Bridge is not running. Start it with: bridge start")
+        return 1
     except Exception as e:
         print_error(str(e))
         return 1

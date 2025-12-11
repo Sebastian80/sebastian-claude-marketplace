@@ -12,9 +12,9 @@ import pytest
 # Setup paths
 PLUGIN_ROOT = Path(__file__).parent.parent.parent
 SKILLS_PLUGIN = PLUGIN_ROOT / "skills" / "jira-communication" / "scripts" / "skills_plugin"
-SKILLS_DAEMON = PLUGIN_ROOT.parent / "skills-daemon"
+AI_TOOL_BRIDGE = PLUGIN_ROOT.parent / "ai-tool-bridge" / "src"
 sys.path.insert(0, str(SKILLS_PLUGIN.parent))
-sys.path.insert(0, str(SKILLS_DAEMON))
+sys.path.insert(0, str(AI_TOOL_BRIDGE))
 
 from skills_plugin import (
     is_connection_error,
@@ -149,19 +149,19 @@ class TestResetClient:
     @pytest.fixture(autouse=True)
     def reset_globals(self):
         """Reset global state."""
-        import skills_plugin
-        skills_plugin.jira_client = None
+        from skills_plugin import client
+        client.jira_client = None
         yield
-        skills_plugin.jira_client = None
+        client.jira_client = None
 
     def test_resets_client_to_none(self):
         """Should set jira_client to None."""
-        import skills_plugin
-        skills_plugin.jira_client = MagicMock()
+        from skills_plugin import client
+        client.jira_client = MagicMock()
 
         reset_client()
 
-        assert skills_plugin.jira_client is None
+        assert client.jira_client is None
 
 
 class TestCheckConnection:
@@ -170,11 +170,11 @@ class TestCheckConnection:
     @pytest.fixture(autouse=True)
     def reset_globals(self):
         """Reset global state."""
-        import skills_plugin
-        skills_plugin.jira_client = None
-        skills_plugin.last_health_check = 0
+        from skills_plugin import client
+        client.jira_client = None
+        client.last_health_check = 0
         yield
-        skills_plugin.jira_client = None
+        client.jira_client = None
 
     def test_returns_false_when_no_client(self):
         """Should return False when no client exists."""
@@ -182,17 +182,17 @@ class TestCheckConnection:
 
     def test_returns_true_when_recently_checked(self):
         """Should return True if recently checked (skip re-check)."""
-        import skills_plugin
-        skills_plugin.jira_client = MagicMock()
-        skills_plugin.last_health_check = time.time()  # Just now
+        from skills_plugin import client
+        client.jira_client = MagicMock()
+        client.last_health_check = time.time()  # Just now
 
         assert check_connection() is True
 
     def test_calls_myself_when_check_needed(self, mock_jira_client):
         """Should call myself() when check is stale."""
-        import skills_plugin
-        skills_plugin.jira_client = mock_jira_client
-        skills_plugin.last_health_check = 0  # Very stale
+        from skills_plugin import client
+        client.jira_client = mock_jira_client
+        client.last_health_check = 0  # Very stale
 
         result = check_connection()
 
@@ -201,16 +201,16 @@ class TestCheckConnection:
 
     def test_resets_client_on_failure(self):
         """Should reset client if connection check fails."""
-        import skills_plugin
+        from skills_plugin import client
         mock_client = MagicMock()
         mock_client.myself.side_effect = Exception("Connection lost")
-        skills_plugin.jira_client = mock_client
-        skills_plugin.last_health_check = 0
+        client.jira_client = mock_client
+        client.last_health_check = 0
 
         result = check_connection()
 
         assert result is False
-        assert skills_plugin.jira_client is None
+        assert client.jira_client is None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

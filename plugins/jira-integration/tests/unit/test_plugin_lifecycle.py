@@ -12,9 +12,9 @@ import pytest
 # Setup paths
 PLUGIN_ROOT = Path(__file__).parent.parent.parent
 SKILLS_PLUGIN = PLUGIN_ROOT / "skills" / "jira-communication" / "scripts" / "skills_plugin"
-SKILLS_DAEMON = PLUGIN_ROOT.parent / "skills-daemon"
+AI_TOOL_BRIDGE = PLUGIN_ROOT.parent / "ai-tool-bridge" / "src"
 sys.path.insert(0, str(SKILLS_PLUGIN.parent))
-sys.path.insert(0, str(SKILLS_DAEMON))
+sys.path.insert(0, str(AI_TOOL_BRIDGE))
 
 
 class TestJiraPluginConnect:
@@ -23,12 +23,12 @@ class TestJiraPluginConnect:
     @pytest.fixture(autouse=True)
     def reset_globals(self):
         """Reset global state before each test."""
-        import skills_plugin
-        skills_plugin.jira_client = None
-        skills_plugin.workflow_store = None
-        skills_plugin.last_health_check = 0
+        from skills_plugin import client
+        client.jira_client = None
+        client.workflow_store = None
+        client.last_health_check = 0
         yield
-        skills_plugin.jira_client = None
+        client.jira_client = None
 
     @pytest.fixture
     def plugin(self):
@@ -39,9 +39,7 @@ class TestJiraPluginConnect:
     @pytest.mark.asyncio
     async def test_connect_success(self, plugin, mock_jira_client):
         """connect() should establish connection on success."""
-        import skills_plugin
-
-        with patch("skills_plugin.get_client_sync", return_value=mock_jira_client):
+        with patch("skills_plugin.client.get_client_sync", return_value=mock_jira_client):
             await plugin.connect()
 
         # Should not raise and should log success
@@ -49,17 +47,17 @@ class TestJiraPluginConnect:
     @pytest.mark.asyncio
     async def test_connect_failure_raises(self, plugin):
         """connect() should raise on connection failure."""
-        with patch("skills_plugin.get_client_sync", side_effect=Exception("Connection refused")):
+        with patch("skills_plugin.client.get_client_sync", side_effect=Exception("Connection refused")):
             with pytest.raises(Exception, match="Connection refused"):
                 await plugin.connect()
 
     @pytest.mark.asyncio
     async def test_connect_resets_existing_client(self, plugin, mock_jira_client):
         """connect() should reset existing client before connecting."""
-        import skills_plugin
-        skills_plugin.jira_client = MagicMock()  # Existing client
+        from skills_plugin import client
+        client.jira_client = MagicMock()  # Existing client
 
-        with patch("skills_plugin.get_client_sync", return_value=mock_jira_client):
+        with patch("skills_plugin.client.get_client_sync", return_value=mock_jira_client):
             await plugin.connect()
 
         # Should have reset client to None first (handled in connect())
@@ -71,10 +69,10 @@ class TestJiraPluginReconnect:
     @pytest.fixture(autouse=True)
     def reset_globals(self):
         """Reset global state before each test."""
-        import skills_plugin
-        skills_plugin.jira_client = None
+        from skills_plugin import client
+        client.jira_client = None
         yield
-        skills_plugin.jira_client = None
+        client.jira_client = None
 
     @pytest.fixture
     def plugin(self):
@@ -119,16 +117,16 @@ class TestJiraPluginReconnect:
     @pytest.mark.asyncio
     async def test_reconnect_resets_client_first(self, plugin, mock_jira_client):
         """reconnect() should reset existing client before attempting reconnect."""
-        import skills_plugin
+        from skills_plugin import client
         old_client = MagicMock()
-        skills_plugin.jira_client = old_client
+        client.jira_client = old_client
 
         with patch.object(plugin, "connect", new_callable=AsyncMock):
             with patch("asyncio.sleep", new_callable=AsyncMock):
                 await plugin.reconnect()
 
         # Client should have been reset
-        assert skills_plugin.jira_client is None  # Reset before connect
+        assert client.jira_client is None  # Reset before connect
 
 
 class TestJiraPluginShutdown:
@@ -137,10 +135,10 @@ class TestJiraPluginShutdown:
     @pytest.fixture(autouse=True)
     def reset_globals(self):
         """Reset global state before each test."""
-        import skills_plugin
-        skills_plugin.jira_client = None
+        from skills_plugin import client
+        client.jira_client = None
         yield
-        skills_plugin.jira_client = None
+        client.jira_client = None
 
     @pytest.fixture
     def plugin(self):
@@ -151,23 +149,23 @@ class TestJiraPluginShutdown:
     @pytest.mark.asyncio
     async def test_shutdown_clears_client(self, plugin, mock_jira_client):
         """shutdown() should clear the jira_client."""
-        import skills_plugin
-        skills_plugin.jira_client = mock_jira_client
+        from skills_plugin import client
+        client.jira_client = mock_jira_client
 
         await plugin.shutdown()
 
-        assert skills_plugin.jira_client is None
+        assert client.jira_client is None
 
     @pytest.mark.asyncio
     async def test_shutdown_handles_no_client(self, plugin):
         """shutdown() should handle case when no client exists."""
-        import skills_plugin
-        skills_plugin.jira_client = None
+        from skills_plugin import client
+        client.jira_client = None
 
         # Should not raise
         await plugin.shutdown()
 
-        assert skills_plugin.jira_client is None
+        assert client.jira_client is None
 
 
 class TestJiraPluginStartup:
@@ -176,10 +174,10 @@ class TestJiraPluginStartup:
     @pytest.fixture(autouse=True)
     def reset_globals(self):
         """Reset global state before each test."""
-        import skills_plugin
-        skills_plugin.workflow_store = None
+        from skills_plugin import client
+        client.workflow_store = None
         yield
-        skills_plugin.workflow_store = None
+        client.workflow_store = None
 
     @pytest.fixture
     def plugin(self):
@@ -212,12 +210,12 @@ class TestJiraPluginHealthCheck:
     @pytest.fixture(autouse=True)
     def reset_globals(self):
         """Reset global state before each test."""
-        import skills_plugin
-        skills_plugin.jira_client = None
-        skills_plugin.workflow_store = None
-        skills_plugin.last_health_check = 0
+        from skills_plugin import client
+        client.jira_client = None
+        client.workflow_store = None
+        client.last_health_check = 0
         yield
-        skills_plugin.jira_client = None
+        client.jira_client = None
 
     @pytest.fixture
     def plugin(self):
@@ -227,8 +225,8 @@ class TestJiraPluginHealthCheck:
 
     def test_health_check_no_connection(self, plugin):
         """health_check() should return not_connected when no client."""
-        import skills_plugin
-        skills_plugin.jira_client = None
+        from skills_plugin import client
+        client.jira_client = None
 
         result = plugin.health_check()
 
@@ -237,11 +235,11 @@ class TestJiraPluginHealthCheck:
 
     def test_health_check_connected(self, plugin, mock_jira_client):
         """health_check() should return connected when client is healthy."""
-        import skills_plugin
+        from skills_plugin import client
         import time
 
-        skills_plugin.jira_client = mock_jira_client
-        skills_plugin.last_health_check = time.time() - 10  # Recent check
+        client.jira_client = mock_jira_client
+        client.last_health_check = time.time() - 10  # Recent check
 
         result = plugin.health_check()
 
@@ -249,16 +247,16 @@ class TestJiraPluginHealthCheck:
 
     def test_health_check_connection_error(self, plugin):
         """health_check() should detect connection errors."""
-        import skills_plugin
+        from skills_plugin import client
         import time
 
         mock_client = MagicMock()
         mock_client.myself.side_effect = Exception("Network error")
-        skills_plugin.jira_client = mock_client
-        skills_plugin.last_health_check = 0  # Force check
+        client.jira_client = mock_client
+        client.last_health_check = 0  # Force check
 
         # Patch get_client_sync to fail reconnection
-        with patch("skills_plugin.get_client_sync", side_effect=Exception("Reconnect failed")):
+        with patch("skills_plugin.client.get_client_sync", side_effect=Exception("Reconnect failed")):
             result = plugin.health_check()
 
         assert result["status"] == "connection_error"
@@ -266,15 +264,15 @@ class TestJiraPluginHealthCheck:
 
     def test_health_check_includes_workflow_count(self, plugin, mock_jira_client):
         """health_check() should include cached workflow count."""
-        import skills_plugin
+        from skills_plugin import client
         import time
 
-        skills_plugin.jira_client = mock_jira_client
-        skills_plugin.last_health_check = time.time()
+        client.jira_client = mock_jira_client
+        client.last_health_check = time.time()
 
         mock_store = MagicMock()
         mock_store.list_types.return_value = ["Bug", "Story", "Task"]
-        skills_plugin.workflow_store = mock_store
+        client.workflow_store = mock_store
 
         result = plugin.health_check()
 
@@ -296,7 +294,7 @@ class TestJiraPluginProperties:
 
     def test_version_property(self, plugin):
         """Plugin should have a version."""
-        assert plugin.version == "1.0.0"
+        assert plugin.version == "1.1.0"
 
     def test_description_property(self, plugin):
         """Plugin should have a description."""

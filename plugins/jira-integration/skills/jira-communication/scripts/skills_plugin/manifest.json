@@ -1,9 +1,14 @@
 {
   "name": "jira",
-  "version": "1.0.0",
-  "description": "Jira issue tracking integration",
-  "dependencies": [
-    "atlassian-python-api>=4.0"
+  "version": "1.1.0",
+  "description": "Jira issue tracking and workflow automation",
+  "entry_point": "skills_plugin:JiraPlugin",
+  "python_path": [
+    "."
   ],
-  "daemon_version": ">=1.0.0"
+  "dependencies": [
+    "atlassian-python-api>=4.0",
+    "rich>=13.0.0"
+  ],
+  "bridge_version": ">=1.0.0"
 }

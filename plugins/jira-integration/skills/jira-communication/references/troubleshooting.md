@@ -35,8 +35,8 @@ JIRA_PERSONAL_TOKEN=your-personal-access-token
 
 **Fix**:
 1. Check if something else uses port 9100: `ss -tlnp | grep 9100`
-2. Check daemon logs: `tail ~/.local/share/skills-daemon/logs/daemon.log`
-3. Restart daemon: `skills-daemon restart`
+2. Check daemon logs: `tail ~/.local/share/ai-tool-bridge/logs/daemon.log`
+3. Restart daemon: `bridge restart`
 
 ### "Connection failed" / "Connection reset"
 
@@ -88,10 +88,10 @@ JIRA_PERSONAL_TOKEN=your-personal-access-token
 
 ```bash
 # Check daemon status
-skills-client health
+bridge health
 
 # View daemon logs
-tail -f ~/.local/share/skills-daemon/logs/daemon.log
+tail -f ~/.local/share/ai-tool-bridge/logs/daemon.log
 
 # Test direct API call
 curl -s "http://[::1]:9100/jira/user/me"

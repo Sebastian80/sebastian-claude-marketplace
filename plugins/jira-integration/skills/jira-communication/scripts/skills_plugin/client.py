@@ -16,7 +16,7 @@ from typing import Any, Callable
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse, PlainTextResponse
 
-from skills_daemon.formatters import format_response, get_formatter
+from ai_tool_bridge.formatters import formatter_registry
 
 # Configuration
 MAX_RETRIES = 3
@@ -173,7 +173,16 @@ def formatted_response(data: Any, fmt: str, data_type: str | None = None):
     if fmt == "json":
         return JSONResponse(content={"success": True, "data": data})
 
-    formatted = format_response(data, fmt, plugin="jira", data_type=data_type)
+    # Get formatter: try plugin-specific first, then global
+    formatter = formatter_registry.get(fmt, plugin="jira", data_type=data_type)
+    if formatter is None:
+        formatter = formatter_registry.get(fmt)
+
+    if formatter is None:
+        # Fallback to JSON if no formatter found
+        return JSONResponse(content={"success": True, "data": data})
+
+    formatted = formatter.format(data)
     return PlainTextResponse(content=formatted)
 
 
@@ -182,6 +191,10 @@ def formatted_error(message: str, hint: str | None = None, fmt: str = "json", st
     if fmt == "json":
         return error_response(message, hint, status)
 
-    formatter = get_formatter(fmt)
+    # Get formatter for error formatting
+    formatter = formatter_registry.get(fmt)
+    if formatter is None:
+        return error_response(message, hint, status)
+
     formatted = formatter.format_error(message, hint)
     return PlainTextResponse(content=formatted, status_code=status)
