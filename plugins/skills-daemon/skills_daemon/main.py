@@ -429,6 +429,33 @@ def _generate_command_help(plugin, command: str) -> dict[str, Any]:
                         param_info["default"] = default_val
                     except (TypeError, ValueError):
                         pass  # Skip non-serializable defaults
+
+                # Extract min/max constraints from FastAPI Query metadata
+                # These are stored in field_info.metadata as annotated constraints
+                metadata = getattr(param.field_info, "metadata", [])
+                for constraint in metadata:
+                    constraint_type = type(constraint).__name__
+                    if constraint_type == "Ge":  # >= (greater or equal)
+                        param_info["minimum"] = getattr(constraint, "ge", None)
+                    elif constraint_type == "Le":  # <= (less or equal)
+                        param_info["maximum"] = getattr(constraint, "le", None)
+                    elif constraint_type == "Gt":  # > (greater than)
+                        param_info["exclusiveMinimum"] = getattr(constraint, "gt", None)
+                    elif constraint_type == "Lt":  # < (less than)
+                        param_info["exclusiveMaximum"] = getattr(constraint, "lt", None)
+                    elif constraint_type == "MinLen":
+                        param_info["minLength"] = getattr(constraint, "min_length", None)
+                    elif constraint_type == "MaxLen":
+                        param_info["maxLength"] = getattr(constraint, "max_length", None)
+
+                # Also check direct attributes on field_info (older FastAPI style)
+                for attr, schema_key in [("ge", "minimum"), ("le", "maximum"),
+                                          ("gt", "exclusiveMinimum"), ("lt", "exclusiveMaximum"),
+                                          ("min_length", "minLength"), ("max_length", "maxLength")]:
+                    val = getattr(param.field_info, attr, None)
+                    if val is not None and schema_key not in param_info:
+                        param_info[schema_key] = val
+
                 params.append(param_info)
 
             # Path parameters
@@ -481,9 +508,14 @@ def _generate_command_help(plugin, command: str) -> dict[str, Any]:
             usage_parts.append(f"--{rp} <value>")
         usage = " ".join(usage_parts)
 
-        return {
+        # Get operation_id (critical for OpenAI function calling)
+        operation_id = getattr(route, "operation_id", None) or getattr(route, "name", command)
+
+        # Build response - OpenAPI compatible structure for AI agents
+        result = {
             "plugin": plugin.name,
             "command": command,
+            "operationId": f"{plugin.name}_{operation_id}",  # OpenAI requires this
             "path": f"/{plugin.name}{route.path}",
             "summary": getattr(route, "summary", "") or route.name or command,
             "description": docstring or getattr(route, "description", "") or "",
@@ -491,7 +523,29 @@ def _generate_command_help(plugin, command: str) -> dict[str, Any]:
             "parameters": params,
             "usage": usage,
             "examples": examples,
+            # AI-friendly metadata
+            "errors": {
+                "400": "Invalid parameters - check required fields and types",
+                "404": "Resource not found (e.g., issue key doesn't exist)",
+                "401": "Authentication failed - check credentials",
+                "500": "Server error - check daemon logs",
+            },
+            "hints": {
+                "auth": "Uses pre-configured Jira credentials from daemon",
+                "format": "Use --format human for readable output, json for parsing",
+            },
         }
+
+        # Add response hints based on method
+        methods = list(getattr(route, "methods", ["GET"]))
+        if "GET" in methods:
+            result["returns"] = "JSON object with requested data"
+        elif "POST" in methods:
+            result["returns"] = "JSON object with created/updated resource"
+        elif "DELETE" in methods:
+            result["returns"] = "Success confirmation"
+
+        return result
 
     # Command not found
     available = []

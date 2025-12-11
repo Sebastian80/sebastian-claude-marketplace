@@ -14,8 +14,8 @@ router = APIRouter()
 
 @router.get("/search")
 async def search(
-    jql: str = Query(..., description="JQL query string"),
-    max_results: int = Query(50, alias="maxResults", description="Maximum results (1-100)"),
+    jql: str = Query(..., description="JQL query string (e.g., 'project = PROJ AND status = Open')"),
+    max_results: int = Query(50, alias="maxResults", ge=1, le=100, description="Maximum results to return"),
     fields: str = Query(
         "key,summary,status,assignee,priority,issuetype",
         description="Comma-separated fields to return"

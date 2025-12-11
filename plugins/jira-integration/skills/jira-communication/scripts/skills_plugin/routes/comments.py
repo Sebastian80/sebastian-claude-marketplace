@@ -47,7 +47,7 @@ async def add_comment(
 @router.get("/comments/{key}")
 async def list_comments(
     key: str,
-    limit: int = Query(10, description="Maximum comments to return (most recent first)"),
+    limit: int = Query(10, ge=1, le=100, description="Maximum comments to return"),
     format: str = Query("json", description="Output format: json, human, ai, markdown"),
 ):
     """List comments on issue.
