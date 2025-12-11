@@ -543,13 +543,48 @@ def discover_and_register_plugins() -> None:
                 plugin_paths.append(Path(line).expanduser())
 
     # 3. Convention-based discovery: scan for skills_plugin directories
+    # Priority: marketplaces > cache (so local dev changes aren't overwritten)
     if not plugin_paths:
         claude_plugins = Path.home() / ".claude" / "plugins"
         if claude_plugins.exists():
-            # Find all skills_plugin directories
+            # Collect all skills_plugin directories, tracking source type
+            marketplace_plugins: dict[str, Path] = {}  # plugin_id -> path
+            cache_plugins: dict[str, Path] = {}
+
             for skills_plugin in claude_plugins.rglob("skills_plugin"):
-                if skills_plugin.is_dir() and (skills_plugin / "__init__.py").exists():
+                if not skills_plugin.is_dir() or not (skills_plugin / "__init__.py").exists():
+                    continue
+
+                # Determine source type and plugin identity
+                rel_parts = skills_plugin.relative_to(claude_plugins).parts
+                source_type = rel_parts[0] if rel_parts else ""
+
+                # Create unique plugin ID from path (marketplace/plugin-name or cache/...)
+                # Use the last 3 parts to identify: marketplace-name/plugin-name/...
+                plugin_id = "/".join(rel_parts[1:4]) if len(rel_parts) > 3 else str(skills_plugin)
+
+                if source_type == "marketplaces":
+                    marketplace_plugins[plugin_id] = skills_plugin
+                elif source_type == "cache":
+                    cache_plugins[plugin_id] = skills_plugin
+                else:
+                    # Unknown source, just add it
                     plugin_paths.append(skills_plugin)
+
+            # Add marketplace plugins first (they have priority)
+            for plugin_id, path in marketplace_plugins.items():
+                plugin_paths.append(path)
+                # If also in cache, skip cache version
+                if plugin_id in cache_plugins:
+                    logger.debug(
+                        f"Skipping cached version, using marketplace source",
+                        plugin_id=plugin_id,
+                    )
+
+            # Add cache plugins only if not already in marketplace
+            for plugin_id, path in cache_plugins.items():
+                if plugin_id not in marketplace_plugins:
+                    plugin_paths.append(path)
 
     # Load each plugin
     for plugin_path in plugin_paths:
