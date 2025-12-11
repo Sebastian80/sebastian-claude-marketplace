@@ -129,15 +129,16 @@ class TestComponentEdgeCases:
     def test_component_empty_project(self):
         """Should handle missing project key."""
         stdout, stderr, code = run_cli_raw("jira", "components")
-        stdout_lower = stdout.lower()
-        assert ("error" in stdout_lower or "required" in stderr.lower() or
-                "not found" in stdout_lower or code != 0)
+        combined_lower = (stdout + stderr).lower()
+        assert ("error" in combined_lower or "required" in combined_lower or
+                "not found" in combined_lower or code != 0)
 
     def test_component_lowercase_project(self):
         """Should handle lowercase project key."""
         stdout, stderr, code = run_cli_raw("jira", "components", TEST_PROJECT.lower())
+        combined_lower = (stdout + stderr).lower()
         # May work or return error
-        assert code == 0 or "not found" in stdout.lower() or "error" in stdout.lower()
+        assert code == 0 or "not found" in combined_lower or "error" in combined_lower
 
 
 if __name__ == "__main__":

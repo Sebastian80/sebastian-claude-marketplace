@@ -52,15 +52,25 @@ async def create_version(
     description: str = Query(None, description="Version description"),
     released: bool = Query(False, description="Mark version as released"),
 ):
-    """Create a new version.
+    """Create, get, or update a version.
 
-    Creates a version/release in the specified project for tracking work.
-    Versions help organize issues by release cycle or sprint.
+    This command supports multiple operations:
+    - POST: Create new version (with --project and --name)
+    - GET: Get version details by ID (jira version VERSION_ID)
+    - PATCH: Update version (jira version/update VERSION_ID --name/--released)
 
-    Examples:
+    Create version examples:
         jira version --project PROJ --name "v1.2.0"
         jira version --project PROJ --name "Sprint 23" --description "Q4 Sprint"
         jira version --project HMKG --name "v2.0.0" --released true
+
+    Get version examples:
+        jira version 10345
+        jira version 10345 --format human
+
+    Update version examples:
+        jira version/update 10345 --name "v1.2.1"
+        jira version/update 10345 --released true
     """
     client = await get_client()
     try:
@@ -102,15 +112,14 @@ async def get_version(
     """
     client = await get_client()
     try:
-        version = client.version(version_id)
+        version = client.get_version(version_id)
         return formatted_response(version, format, "version")
     except Exception as e:
         error_msg = str(e)
         if "404" in error_msg or "not found" in error_msg.lower():
-            return error_response(
-                f"Version '{version_id}' not found",
-                hint="Use 'jira versions PROJECT' to list available versions",
-                status=404,
+            raise HTTPException(
+                status_code=404,
+                detail=f"Version '{version_id}' not found. Use 'jira versions PROJECT' to list available versions."
             )
         raise HTTPException(status_code=500, detail=error_msg)
 

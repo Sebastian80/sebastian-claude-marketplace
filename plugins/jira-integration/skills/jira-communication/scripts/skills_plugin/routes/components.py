@@ -53,15 +53,24 @@ async def create_component(
     description: str = Query(None, description="Component description"),
     lead: str = Query(None, description="Component lead username"),
 ):
-    """Create a new component.
+    """Create, get, or delete a component.
 
-    Creates a component in the specified project for categorizing issues.
-    Components help organize issues by area (e.g., Backend, Frontend, Infrastructure).
+    This command supports multiple operations:
+    - POST: Create new component (with --project and --name)
+    - GET: Get component details by ID (jira component COMPONENT_ID)
+    - DELETE: Delete component (jira component/delete COMPONENT_ID)
 
-    Examples:
+    Create component examples:
         jira component --project PROJ --name "Backend"
         jira component --project PROJ --name "Frontend" --description "UI components"
         jira component --project HMKG --name "API" --lead john.doe
+
+    Get component examples:
+        jira component 10234
+        jira component 10234 --format human
+
+    Delete component examples:
+        jira component/delete 10234
     """
     client = await get_client()
     try:

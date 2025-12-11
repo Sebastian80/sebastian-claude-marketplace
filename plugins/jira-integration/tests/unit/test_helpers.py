@@ -221,25 +221,33 @@ class TestSuccessResponse:
     """Tests for success_response()."""
 
     def test_wraps_data(self):
-        """Should wrap data in success response."""
+        """Should wrap data in JSONResponse."""
+        import json
+        from fastapi.responses import JSONResponse
         result = success_response({"key": "TEST-1"})
 
-        assert result["success"] is True
-        assert result["data"] == {"key": "TEST-1"}
+        assert isinstance(result, JSONResponse)
+        body = json.loads(result.body)
+        assert body["success"] is True
+        assert body["data"] == {"key": "TEST-1"}
 
     def test_handles_list_data(self):
         """Should handle list data."""
+        import json
         result = success_response([1, 2, 3])
 
-        assert result["success"] is True
-        assert result["data"] == [1, 2, 3]
+        body = json.loads(result.body)
+        assert body["success"] is True
+        assert body["data"] == [1, 2, 3]
 
     def test_handles_string_data(self):
         """Should handle string data."""
+        import json
         result = success_response("hello")
 
-        assert result["success"] is True
-        assert result["data"] == "hello"
+        body = json.loads(result.body)
+        assert body["success"] is True
+        assert body["data"] == "hello"
 
 
 class TestErrorResponse:
@@ -271,12 +279,16 @@ class TestErrorResponse:
 class TestFormattedResponse:
     """Tests for formatted_response()."""
 
-    def test_json_format_returns_dict(self):
-        """JSON format should return success_response dict."""
+    def test_json_format_returns_json_response(self):
+        """JSON format should return JSONResponse with proper serialization."""
+        import json
+        from fastapi.responses import JSONResponse
         result = formatted_response({"key": "TEST-1"}, "json")
 
-        assert isinstance(result, dict)
-        assert result["success"] is True
+        assert isinstance(result, JSONResponse)
+        body = json.loads(result.body)
+        assert body["success"] is True
+        assert body["data"] == {"key": "TEST-1"}
 
     def test_human_format_returns_plaintext(self):
         """Human format should return PlainTextResponse."""
@@ -329,12 +341,16 @@ class TestEdgeCases:
 
     def test_success_response_with_none(self):
         """Should handle None data."""
+        import json
         result = success_response(None)
-        assert result["success"] is True
-        assert result["data"] is None
+        body = json.loads(result.body)
+        assert body["success"] is True
+        assert body["data"] is None
 
     def test_success_response_with_empty_dict(self):
         """Should handle empty dict."""
+        import json
         result = success_response({})
-        assert result["success"] is True
-        assert result["data"] == {}
+        body = json.loads(result.body)
+        assert body["success"] is True
+        assert body["data"] == {}

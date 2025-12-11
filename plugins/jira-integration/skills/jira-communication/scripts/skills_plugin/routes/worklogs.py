@@ -51,9 +51,13 @@ async def add_worklog(
     comment: str | None = Query(None, description="Work description (use Jira wiki markup, not Markdown)"),
     started: str | None = Query(None, description="Start time (ISO 8601 format, e.g., '2025-01-15T10:00:00.000+0000')"),
 ):
-    """Add worklog to issue.
+    """Add worklog to issue (or get specific worklog by ID).
 
-    Log time spent on an issue. Time format: Xd Xh Xm (days, hours, minutes).
+    This command supports two operations:
+    - POST: Log time spent on an issue (with --timeSpent)
+    - GET: Retrieve a specific worklog by ID (jira worklog ISSUE-KEY WORKLOG_ID)
+
+    Time format: Xd Xh Xm (days, hours, minutes).
     Examples: "2h", "1d 4h", "30m", "1d 2h 30m"
 
     IMPORTANT: Use Jira wiki markup in comment, NOT Markdown:
@@ -61,11 +65,14 @@ async def add_worklog(
     - Code: {{code}} (not `code`)
     - Headings: h2. Title (not ## Title)
 
-    Examples:
+    Add worklog examples:
         jira worklog PROJ-123 --timeSpent "2h"
         jira worklog PROJ-123 --timeSpent "1d 4h" --comment "Implementation complete"
         jira worklog PROJ-123 --timeSpent "30m" --comment "Code review"
-        jira worklog PROJ-123 --timeSpent "3h" --started "2025-01-15T10:00:00.000+0000"
+
+    Get specific worklog examples:
+        jira worklog PROJ-123 12345
+        jira worklog PROJ-123 12345 --format human
     """
     client = await get_client()
     try:
@@ -104,9 +111,16 @@ async def get_worklog(
     """
     client = await get_client()
     try:
-        worklog = client.issue_worklog(key, worklog_id)
+        # atlassian-python-api doesn't have get_worklog_by_id, use REST API
+        # GET /rest/api/2/issue/{issueIdOrKey}/worklog/{id}
+        url = f"rest/api/2/issue/{key}/worklog/{worklog_id}"
+        worklog = client.get(url)
         return formatted_response(worklog, format, "worklog")
     except Exception as e:
-        if "does not exist" in str(e).lower() or "404" in str(e):
-            raise HTTPException(status_code=404, detail=f"Worklog {worklog_id} not found on issue {key}")
-        raise HTTPException(status_code=500, detail=str(e))
+        error_msg = str(e)
+        if "does not exist" in error_msg.lower() or "404" in error_msg:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Worklog {worklog_id} not found on issue {key}. Use 'jira worklogs {key}' to list available worklogs."
+            )
+        raise HTTPException(status_code=500, detail=error_msg)

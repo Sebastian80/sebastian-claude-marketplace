@@ -107,24 +107,23 @@ class TestGetProject:
 
 
 class TestProjectComponents:
-    """Test /project/{key}/components endpoint."""
+    """Test /components/{project} endpoint (accessed via project)."""
 
     def test_project_components_basic(self):
-        """Should get project components."""
-        result = run_cli("jira", "project", TEST_PROJECT, "components", expect_success=False)
+        """Should get project components via components endpoint."""
+        result = run_cli("jira", "components", TEST_PROJECT, expect_success=False)
         data = get_data(result)
-        # May return list or error if endpoint doesn't exist
         assert isinstance(data, (list, dict, str))
 
     def test_project_components_human_format(self):
         """Should format components for human reading."""
-        stdout, stderr, code = run_cli_raw("jira", "project", TEST_PROJECT,
-                                           "components", "--format", "human")
+        stdout, stderr, code = run_cli_raw("jira", "components", TEST_PROJECT,
+                                           "--format", "human")
         assert code == 0
 
     def test_project_components_structure(self):
         """Components should have expected structure if present."""
-        result = run_cli("jira", "project", TEST_PROJECT, "components", expect_success=False)
+        result = run_cli("jira", "components", TEST_PROJECT, expect_success=False)
         data = get_data(result)
         if isinstance(data, list) and len(data) > 0:
             component = data[0]
@@ -132,24 +131,23 @@ class TestProjectComponents:
 
 
 class TestProjectVersions:
-    """Test /project/{key}/versions endpoint."""
+    """Test /versions/{project} endpoint (accessed via project)."""
 
     def test_project_versions_basic(self):
-        """Should get project versions."""
-        result = run_cli("jira", "project", TEST_PROJECT, "versions", expect_success=False)
+        """Should get project versions via versions endpoint."""
+        result = run_cli("jira", "versions", TEST_PROJECT, expect_success=False)
         data = get_data(result)
-        # May return list or error if endpoint doesn't exist
         assert isinstance(data, (list, dict, str))
 
     def test_project_versions_human_format(self):
         """Should format versions for human reading."""
-        stdout, stderr, code = run_cli_raw("jira", "project", TEST_PROJECT,
-                                           "versions", "--format", "human")
+        stdout, stderr, code = run_cli_raw("jira", "versions", TEST_PROJECT,
+                                           "--format", "human")
         assert code == 0
 
     def test_project_versions_structure(self):
         """Versions should have expected structure if present."""
-        result = run_cli("jira", "project", TEST_PROJECT, "versions", expect_success=False)
+        result = run_cli("jira", "versions", TEST_PROJECT, expect_success=False)
         data = get_data(result)
         if isinstance(data, list) and len(data) > 0:
             version = data[0]
@@ -177,16 +175,17 @@ class TestProjectEdgeCases:
         """Should handle lowercase project key."""
         # Jira project keys are typically uppercase
         stdout, stderr, code = run_cli_raw("jira", "project", TEST_PROJECT.lower())
+        combined_lower = (stdout + stderr).lower()
         # May work (Jira sometimes accepts lowercase) or return error
-        assert code == 0 or "not found" in stdout.lower() or "error" in stdout.lower()
+        assert code == 0 or "not found" in combined_lower or "error" in combined_lower
 
     def test_project_empty_key(self):
         """Should handle missing project key."""
         stdout, stderr, code = run_cli_raw("jira", "project")
+        combined_lower = (stdout + stderr).lower()
         # Should error - missing required parameter or return not found
-        stdout_lower = stdout.lower()
-        assert ("error" in stdout_lower or "required" in stderr.lower() or
-                "not found" in stdout_lower or code != 0)
+        assert ("error" in combined_lower or "required" in combined_lower or
+                "not found" in combined_lower or code != 0)
 
 
 if __name__ == "__main__":

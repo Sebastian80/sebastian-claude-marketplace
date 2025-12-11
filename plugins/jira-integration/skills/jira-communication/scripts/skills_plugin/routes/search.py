@@ -56,7 +56,7 @@ async def search(
 
     Examples:
         jira search --jql "project = PROJ AND status = Open"
-        jira search --jql "assignee = currentUser() AND status != Done"
+        jira search --jql "assignee = currentUser() AND status NOT IN (Done)"
         jira search --jql "project = PROJ ORDER BY priority DESC" --maxResults 100
         jira search --jql "labels = urgent" --format human
         jira search --jql "project = PROJ" --fields key,summary,status

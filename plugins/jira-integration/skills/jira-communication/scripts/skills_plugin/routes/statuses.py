@@ -42,7 +42,7 @@ async def get_status(
     """Get status by name.
 
     Retrieves detailed information about a specific status.
-    Status name matching is case-sensitive.
+    Status name matching is case-insensitive.
 
     Examples:
         jira status "In Progress"
@@ -51,7 +51,17 @@ async def get_status(
     """
     client = await get_client()
     try:
-        status = client.get_status_by_name(name)
-        return formatted_response(status, format, "status")
+        # Get all statuses and filter by name (case-insensitive)
+        all_statuses = client.get_all_statuses()
+        name_lower = name.lower()
+        for status in all_statuses:
+            if status.get("name", "").lower() == name_lower:
+                return formatted_response(status, format, "status")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Status '{name}' not found. Use 'jira statuses' to list available statuses."
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

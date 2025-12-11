@@ -143,9 +143,12 @@ def with_retry(retries: int = MAX_RETRIES, delay: float = RETRY_DELAY):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def success_response(data: Any) -> dict:
-    """Standard success response (JSON)."""
-    return {"success": True, "data": data}
+def success_response(data: Any) -> JSONResponse:
+    """Standard success response (JSON).
+
+    Returns JSONResponse for proper JSON serialization (true/false not True/False).
+    """
+    return JSONResponse(content={"success": True, "data": data})
 
 
 def error_response(message: str, hint: str | None = None, status: int = 400) -> JSONResponse:
@@ -163,9 +166,12 @@ def formatted_response(data: Any, fmt: str, data_type: str | None = None):
         data: The data to format
         fmt: Format name (human, json, ai, markdown)
         data_type: Jira data type (issue, search, transitions, comments)
+
+    Returns:
+        JSONResponse for json format, PlainTextResponse for others.
     """
     if fmt == "json":
-        return success_response(data)
+        return JSONResponse(content={"success": True, "data": data})
 
     formatted = format_response(data, fmt, plugin="jira", data_type=data_type)
     return PlainTextResponse(content=formatted)

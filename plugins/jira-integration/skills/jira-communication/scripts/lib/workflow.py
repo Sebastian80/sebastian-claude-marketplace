@@ -401,89 +401,159 @@ def smart_transition(
     client,
     issue_key: str,
     target_state: str,
-    store: WorkflowStore,
+    store: WorkflowStore = None,  # Kept for backward compat, now ignored
     add_comment: bool = False,
     dry_run: bool = False,
-    verbose: bool = False
+    verbose: bool = False,
+    max_steps: int = 5,
 ) -> list[Transition]:
     """
-    Transition issue to target state, navigating multiple steps if needed.
+    Transition issue to target state using runtime path-finding.
+
+    NO CACHING - discovers path at runtime by querying available transitions.
+    This works reliably across all projects and workflow configurations.
+
+    Algorithm:
+    1. Check if already at target → done
+    2. Get available transitions from current state
+    3. If target directly available → execute
+    4. Otherwise, try each transition and recursively search (greedy BFS)
+    5. Stop at max_steps to prevent infinite loops
 
     Args:
         client: Jira client instance
         issue_key: Issue to transition
-        target_state: Target state name (case-insensitive, partial match)
-        store: WorkflowStore instance
+        target_state: Target state name (case-insensitive match)
+        store: IGNORED - kept for backward compatibility
         add_comment: Add comment trail after transition
         dry_run: Show path without executing
         verbose: Print progress
+        max_steps: Maximum transitions to execute (default 5)
 
     Returns:
         List of Transitions that were executed
 
     Raises:
-        WorkflowNotFoundError: Issue type unknown (triggers auto-discover)
         PathNotFoundError: No route to target state
         TransitionFailedError: Execution failed mid-path
     """
-    # Get issue info
-    issue = client.issue(issue_key, fields="status,issuetype")
-    issue_type = issue["fields"]["issuetype"]["name"]
-    current_state = issue["fields"]["status"]["name"]
-
-    if verbose:
-        print(f"Transitioning {issue_key} ({issue_type})")
-        print(f"  Current: {current_state}")
-        print(f"  Target: {target_state}")
-
-    # Load workflow
-    graph = store.get(issue_type)
-
-    if graph is None:
-        if verbose:
-            print(f"  Workflow unknown, discovering...")
-        graph = discover_workflow(client, issue_key, verbose=verbose)
-        store.save(graph)
-
-    # Find path
-    path = graph.path_to(current_state, target_state)
-
-    if not path:
-        if verbose:
-            print(f"  Already at target state")
-        return []
-
-    if verbose or dry_run:
-        path_str = " → ".join([current_state] + [t.to for t in path])
-        print(f"  Path: {path_str} ({len(path)} steps)")
-
-    if dry_run:
-        return path
-
-    # Execute transitions
+    target_lower = target_state.lower()
     executed = []
-    for i, transition in enumerate(path, 1):
-        if verbose:
-            print(f"  Step {i}/{len(path)}: {transition.name} → {transition.to}", end=" ")
+    visited_states = set()
+    start_state = None
 
-        try:
-            client.set_issue_status(issue_key, transition.to)
-            executed.append(transition)
+    for step in range(max_steps):
+        # Get current state
+        issue = client.issue(issue_key, fields="status")
+        current_state = issue["fields"]["status"]["name"]
+
+        if start_state is None:
+            start_state = current_state
+
+        if verbose:
+            print(f"  Step {step}: at '{current_state}'")
+
+        # Check if already at target (case-insensitive)
+        if current_state.lower() == target_lower:
             if verbose:
-                print("✓")
-        except Exception as e:
-            if verbose:
-                print("✗")
-            raise TransitionFailedError(
-                issue_key=issue_key,
-                transition=transition,
-                current_state=executed[-1].to if executed else current_state,
-                reason=str(e)
+                print(f"  ✓ Reached target '{target_state}'")
+            break
+
+        # Detect loops
+        if current_state in visited_states:
+            raise PathNotFoundError(
+                from_state=start_state,
+                to_state=target_state,
+                reachable=visited_states
+            )
+        visited_states.add(current_state)
+
+        # Get available transitions
+        transitions_raw = client.get_issue_transitions(issue_key)
+        transitions = []
+        for t in transitions_raw:
+            to_state = t.get("to", {})
+            to_name = to_state.get("name", "") if isinstance(to_state, dict) else str(to_state)
+            transitions.append(Transition(
+                id=str(t["id"]),
+                name=t["name"],
+                to=to_name
+            ))
+
+        if verbose:
+            available = [t.to for t in transitions]
+            print(f"    Available: {available}")
+
+        if not transitions:
+            raise PathNotFoundError(
+                from_state=start_state,
+                to_state=target_state,
+                reachable=visited_states
             )
 
+        # Look for direct transition to target
+        direct = None
+        for t in transitions:
+            if t.to.lower() == target_lower:
+                direct = t
+                break
+
+        if direct:
+            if verbose:
+                print(f"    → Direct transition: {direct.name}")
+            if not dry_run:
+                try:
+                    client.set_issue_status(issue_key, direct.to)
+                except Exception as e:
+                    raise TransitionFailedError(
+                        issue_key=issue_key,
+                        transition=direct,
+                        current_state=current_state,
+                        reason=str(e)
+                    )
+            executed.append(direct)
+            break
+
+        # No direct path - pick transition to unvisited state
+        next_transition = None
+        for t in transitions:
+            if t.to not in visited_states:
+                next_transition = t
+                break
+
+        if next_transition is None:
+            # All transitions lead to visited states - stuck
+            raise PathNotFoundError(
+                from_state=start_state,
+                to_state=target_state,
+                reachable=visited_states
+            )
+
+        if verbose:
+            print(f"    → Intermediate: {next_transition.name} → {next_transition.to}")
+
+        if not dry_run:
+            try:
+                client.set_issue_status(issue_key, next_transition.to)
+            except Exception as e:
+                raise TransitionFailedError(
+                    issue_key=issue_key,
+                    transition=next_transition,
+                    current_state=current_state,
+                    reason=str(e)
+                )
+        executed.append(next_transition)
+
+    else:
+        # Loop exhausted without reaching target
+        raise WorkflowError(
+            f"Could not reach '{target_state}' within {max_steps} steps. "
+            f"Visited: {', '.join(sorted(visited_states))}"
+        )
+
     # Add comment trail if requested
-    if add_comment and executed:
-        trail = " → ".join([current_state] + [t.to for t in executed])
+    if add_comment and executed and not dry_run:
+        trail = " → ".join([start_state] + [t.to for t in executed])
         comment = f"Transitioned: {trail}"
         try:
             client.issue_add_comment(issue_key, comment)

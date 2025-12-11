@@ -53,13 +53,19 @@ async def upload_attachment(
     filename: str = Query(..., description="Name of the file to attach"),
     content: str = Query(..., description="Base64-encoded file content"),
 ):
-    """Upload attachment to issue.
+    """Upload or delete an attachment.
 
-    Uploads a file to the specified issue. The file content must be base64-encoded.
+    This command supports two operations:
+    - POST: Upload attachment (with --filename and --content)
+    - DELETE: Delete attachment (jira attachment/delete ATTACHMENT_ID)
 
-    Examples:
+    Upload attachment examples:
         jira attachment PROJ-123 --filename "screenshot.png" --content "$(base64 -w0 screenshot.png)"
         jira attachment PROJ-123 --filename "logs.txt" --content "$(base64 -w0 logs.txt)"
+
+    Delete attachment examples:
+        jira attachment/delete 12345
+        jira attachments PROJ-123  # list attachments first to get IDs
     """
     client = await get_client()
     try:
@@ -97,8 +103,8 @@ async def delete_attachment(
     Use 'jira attachments ISSUE-KEY' to get attachment IDs.
 
     Examples:
-        jira attachment 12345 --delete
-        jira delete-attachment 12345
+        jira attachment/delete 12345
+        jira attachments PROJ-123  # to see attachment IDs first
     """
     client = await get_client()
     try:

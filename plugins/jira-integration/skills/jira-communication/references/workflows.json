@@ -1,7 +1,7 @@
 {
   "_meta": {
     "version": 1,
-    "updated_at": "2025-12-10T15:12:24.300899"
+    "updated_at": "2025-12-11T14:26:56.583470"
   },
   "issue_types": {
     "Sub: Technical task": {
@@ -376,6 +376,93 @@
             "id": "761",
             "name": "Require feedback",
             "to": "Waiting"
+          }
+        ]
+      }
+    },
+    "Verbesserung": {
+      "id": "4",
+      "discovered_from": "OROSPD-589",
+      "discovered_at": "2025-12-11T14:26:54.928174",
+      "states": {
+        "In Arbeit": [
+          {
+            "id": "651",
+            "name": "Send to QA",
+            "to": "Waiting for QA"
+          },
+          {
+            "id": "41",
+            "name": "Stop working",
+            "to": "Offen"
+          },
+          {
+            "id": "51",
+            "name": "Require feedback",
+            "to": "Waiting"
+          }
+        ],
+        "Waiting for QA": [
+          {
+            "id": "721",
+            "name": "Start QA",
+            "to": "QA / Revision"
+          },
+          {
+            "id": "731",
+            "name": "Resume work",
+            "to": "In Arbeit"
+          }
+        ],
+        "QA / Revision": [
+          {
+            "id": "751",
+            "name": "Require deployment",
+            "to": "Ready for deployment"
+          },
+          {
+            "id": "671",
+            "name": "Return for revision",
+            "to": "Neuer\u00f6ffnet"
+          },
+          {
+            "id": "661",
+            "name": "Done & close",
+            "to": "Geschlossen"
+          },
+          {
+            "id": "741",
+            "name": "Resume work",
+            "to": "In Arbeit"
+          },
+          {
+            "id": "791",
+            "name": "Done",
+            "to": "Fertig"
+          }
+        ],
+        "Ready for deployment": [
+          {
+            "id": "761",
+            "name": "Released & Close",
+            "to": "Geschlossen"
+          },
+          {
+            "id": "641",
+            "name": "Reopen",
+            "to": "Neuer\u00f6ffnet"
+          },
+          {
+            "id": "791",
+            "name": "Done",
+            "to": "Fertig"
+          }
+        ],
+        "Geschlossen": [
+          {
+            "id": "631",
+            "name": "Reopen",
+            "to": "Neuer\u00f6ffnet"
           }
         ]
       }

@@ -50,14 +50,19 @@ async def add_watcher(
     key: str,
     username: str = Query(..., description="Username of user to add as watcher"),
 ):
-    """Add watcher to issue.
+    """Add or remove a watcher from an issue.
 
-    Adds a user as a watcher on the specified issue.
-    The user will receive notifications when the issue is updated.
+    This command supports two operations:
+    - POST: Add watcher (with --username)
+    - DELETE: Remove watcher (jira watcher/remove ISSUE-KEY USERNAME)
 
-    Examples:
+    Add watcher examples:
         jira watcher PROJ-123 --username john.doe
-        jira add-watcher PROJ-123 --username jane.smith
+        jira watcher PROJ-123 --username jane.smith
+
+    Remove watcher examples:
+        jira watcher/remove PROJ-123 john.doe
+        jira watchers PROJ-123  # list current watchers first
     """
     client = await get_client()
     try:
@@ -98,8 +103,8 @@ async def remove_watcher(
     The user will no longer receive notifications for this issue.
 
     Examples:
-        jira watcher PROJ-123 john.doe --delete
-        jira remove-watcher PROJ-123 --username jane.smith
+        jira watcher/remove PROJ-123 john.doe
+        jira watchers PROJ-123  # to see current watchers first
     """
     client = await get_client()
     try:

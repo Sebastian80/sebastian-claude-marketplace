@@ -37,4 +37,29 @@ register_jira_formatters()
 # Export plugin class
 from skills_plugin.plugin import JiraPlugin
 
-__all__ = ["JiraPlugin"]
+# Export helper functions for tests
+from skills_plugin.client import (
+    is_connection_error,
+    with_retry,
+    reset_client,
+    check_connection,
+    get_client_sync,
+    success_response,
+    error_response,
+    formatted_response,
+    formatted_error,
+)
+
+__all__ = [
+    "JiraPlugin",
+    # Helper functions
+    "is_connection_error",
+    "with_retry",
+    "reset_client",
+    "check_connection",
+    "get_client_sync",
+    "success_response",
+    "error_response",
+    "formatted_response",
+    "formatted_error",
+]

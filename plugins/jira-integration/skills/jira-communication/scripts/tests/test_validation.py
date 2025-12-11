@@ -29,8 +29,8 @@ class TestParameterValidation:
     def test_missing_required_param(self):
         """Should show friendly error for missing required params."""
         stdout, stderr, code = run_cli_raw("jira", "create", "--type", "Story")
-        stdout_lower = stdout.lower()
-        assert "missing required parameter" in stdout_lower or "project" in stdout_lower
+        combined_lower = (stdout + stderr).lower()
+        assert "missing required parameter" in combined_lower or "project" in combined_lower
 
 
 class TestErrorHandling:

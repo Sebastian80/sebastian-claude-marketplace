@@ -1,6 +1,6 @@
 # JQL Quick Reference
 
-Common JQL patterns for `jira-search.py query "<JQL>"`.
+Common JQL patterns for `jira search --jql "<JQL>"`.
 
 ## Operators
 
@@ -171,14 +171,14 @@ project = PROJ ORDER BY priority DESC, created ASC
 
 ### `!=` and `!~` Operators (Fixed)
 
-The `atlassian-python-api` library incorrectly escapes `!` in JQL queries. This is **automatically fixed** by `jira-search.py` which pre-processes queries to convert:
+The `atlassian-python-api` library incorrectly escapes `!` in JQL queries. This is **automatically fixed** by the `jira search` command which pre-processes queries to convert:
 
 - `status != Done` → `NOT status = Done`
 - `summary !~ "test"` → `NOT summary ~ "test"`
 
 You can use `!=` and `!~` normally - they will be converted automatically.
 
-**Manual workarounds** (for other tools without the fix):
+**Manual workarounds** (for raw API calls without the fix):
 
 | Instead of | Use |
 |------------|-----|

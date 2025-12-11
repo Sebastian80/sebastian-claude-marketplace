@@ -96,12 +96,12 @@ async def list_link_types_alias(
 async def create_link(
     from_key: str = Query(..., alias="from", description="Source issue key"),
     to_key: str = Query(..., alias="to", description="Target issue key"),
-    link_type: str = Query(..., alias="type", description="Link type name (use 'jira link/types' to list)"),
+    link_type: str = Query(..., alias="type", description="Link type name (use 'jira linktypes' to list)"),
 ):
     """Create link between two issues.
 
     Links two issues with a relationship type.
-    Use 'jira link/types' to see available link types in your Jira.
+    Use 'jira linktypes' to see available link types in your Jira.
 
     Common link types:
     - "Blocks" / "is blocked by" - Dependency
@@ -159,14 +159,22 @@ async def add_weblink(
     url: str = Query(..., description="URL to link"),
     title: str | None = Query(None, description="Link title (defaults to URL)"),
 ):
-    """Add web link (remote link) to issue.
+    """Add or remove a web link (remote link) on an issue.
+
+    This command supports two operations:
+    - POST: Add web link (with --url)
+    - DELETE: Remove web link (jira weblink/remove ISSUE-KEY LINK_ID)
 
     Attaches an external URL to the issue, visible in the Links section.
     Useful for linking to PRs, documentation, or external resources.
 
-    Examples:
+    Add web link examples:
         jira weblink PROJ-123 --url "https://github.com/org/repo/pull/456"
         jira weblink PROJ-123 --url "https://docs.example.com/feature" --title "Feature Docs"
+
+    Remove web link examples:
+        jira weblink/remove PROJ-123 12345
+        jira weblinks PROJ-123  # list web links first to get IDs
     """
     client = await get_client()
     link_title = title or url
@@ -191,13 +199,17 @@ async def add_weblink(
 
 
 @router.get("/weblinks/{key}")
-async def list_weblinks(key: str):
+async def list_weblinks(
+    key: str,
+    format: str = Query("json", description="Output format: json, human, ai, markdown"),
+):
     """List web links on issue.
 
     Returns all remote/web links attached to the issue.
 
     Examples:
         jira weblinks PROJ-123
+        jira weblinks PROJ-123 --format human
     """
     client = await get_client()
     try:
@@ -205,8 +217,11 @@ async def list_weblinks(key: str):
         response = client._session.get(f"{client.url}/{endpoint}")
         response.raise_for_status()
         links = response.json()
-        return success_response(links)
+        return formatted_response(links, format, "weblinks")
     except Exception as e:
+        error_msg = str(e).lower()
+        if "not exist" in error_msg or "not found" in error_msg or "404" in error_msg:
+            raise HTTPException(status_code=404, detail=f"Issue {key} not found")
         raise HTTPException(status_code=500, detail=str(e))
 
 

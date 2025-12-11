@@ -50,29 +50,58 @@ The CLI is thin - all logic is in the daemon. Daemon auto-starts on first use.
 ## Quick Reference
 
 ```bash
-# Get issue
-jira issue PROJ-123
-
-# Search
-jira search --jql "assignee = currentUser()"
-
-# Current user
-jira user me
-
-# Transitions
-jira transitions PROJ-123           # List available
-jira transition PROJ-123 --target "In Progress"
-
-# Comments
-jira comments PROJ-123              # List
-jira comment PROJ-123 --text "Done"
-
-# Create issue
+# ─── Issues ───────────────────────────────────────────
+jira issue PROJ-123                    # Get issue details
+jira issue PROJ-123 --fields summary,status  # Specific fields
+jira issue PROJ-123 --expand changelog # Include change history
 jira create --project PROJ --type Task --summary "New task"
 
-# Workflows
-jira workflows                      # List cached
-jira workflow discover PROJ-123     # Discover from issue
+# ─── Search ───────────────────────────────────────────
+jira search --jql "assignee = currentUser()"
+jira search --jql "project = PROJ" --maxResults 50
+
+# ─── Transitions & Workflow ───────────────────────────
+jira transitions PROJ-123              # List available
+jira transition PROJ-123 --target "In Progress"
+jira workflows                         # List cached workflows
+jira workflow Story                    # Get workflow for issue type
+
+# ─── Comments ─────────────────────────────────────────
+jira comments PROJ-123                 # List comments
+jira comment PROJ-123 --text "Done"    # Add comment
+
+# ─── Time Tracking ────────────────────────────────────
+jira worklogs PROJ-123                 # List worklogs
+jira worklog PROJ-123 --timeSpent 2h   # Log time
+jira worklog PROJ-123 12345            # Get specific worklog
+
+# ─── Links ────────────────────────────────────────────
+jira links PROJ-123                    # Issue links
+jira linktypes                         # Available link types
+jira link --from PROJ-1 --to PROJ-2 --type Blocks
+jira weblinks PROJ-123                 # Web/remote links
+jira weblink PROJ-123 --url "https://..."
+
+# ─── Attachments & Watchers ───────────────────────────
+jira attachments PROJ-123              # List attachments
+jira watchers PROJ-123                 # List watchers
+jira watcher PROJ-123 --username john  # Add watcher
+
+# ─── Project Data ─────────────────────────────────────
+jira projects                          # List all projects
+jira project PROJ                      # Project details
+jira components PROJ                   # Project components
+jira versions PROJ                     # Project versions
+
+# ─── Reference Data ───────────────────────────────────
+jira priorities                        # Priority levels
+jira statuses                          # All statuses
+jira fields                            # All fields
+jira filters                           # Your saved filters
+jira user me                           # Current user
+
+# ─── Health ───────────────────────────────────────────
+jira health                            # Check connection
 ```
 
 ## API Self-Discovery
@@ -88,8 +117,11 @@ Help is generated from daemon's FastAPI metadata - always current.
 ## Output Formats
 
 ```bash
-jira issue PROJ-123              # Default compact output
-jira --json issue PROJ-123       # Raw JSON for programmatic use
+jira issue PROJ-123                     # Default JSON output
+jira issue PROJ-123 --format human      # Human-readable tables
+jira issue PROJ-123 --format ai         # Structured for AI context
+jira issue PROJ-123 --format markdown   # Markdown tables
+jira issue PROJ-123 --format json       # Raw JSON (explicit)
 ```
 
 ## Permission Setup

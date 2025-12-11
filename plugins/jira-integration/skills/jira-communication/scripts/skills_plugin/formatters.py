@@ -511,6 +511,374 @@ class JiraCommentsAIFormatter(AIFormatter):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# Link Types Formatters
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class JiraLinkTypesHumanFormatter(HumanFormatter):
+    """Human-friendly link types using Rich tables."""
+
+    def format(self, data: Any) -> str:
+        if isinstance(data, list) and data and "inward" in data[0]:
+            return self._format_linktypes(data)
+        return super().format(data)
+
+    def _format_linktypes(self, types: list) -> str:
+        if not types:
+            return _render_to_string(Text("No link types found", style="yellow"))
+
+        table = Table(
+            title=f"Link Types ({len(types)})",
+            box=box.ROUNDED,
+            header_style="bold",
+            border_style="dim",
+        )
+
+        table.add_column("Name", style="cyan bold", min_width=15)
+        table.add_column("Outward", min_width=20)
+        table.add_column("Inward", min_width=20)
+
+        for lt in types:
+            table.add_row(
+                lt.get("name", "?"),
+                lt.get("outward", "?"),
+                lt.get("inward", "?"),
+            )
+
+        return _render_to_string(table)
+
+
+class JiraLinkTypesAIFormatter(AIFormatter):
+    """AI-optimized link types."""
+
+    def format(self, data: Any) -> str:
+        if isinstance(data, list) and data and "inward" in data[0]:
+            return self._format_linktypes(data)
+        return super().format(data)
+
+    def _format_linktypes(self, types: list) -> str:
+        if not types:
+            return "NO_LINK_TYPES"
+        lines = [f"LINK_TYPES: {len(types)}"]
+        for lt in types:
+            lines.append(f"- {lt.get('name')}: {lt.get('outward')} / {lt.get('inward')}")
+        return "\n".join(lines)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Issue Links Formatters
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class JiraLinksHumanFormatter(HumanFormatter):
+    """Human-friendly issue links using Rich tables."""
+
+    def format(self, data: Any) -> str:
+        if isinstance(data, list) and (not data or "type" in data[0] if data else True):
+            return self._format_links(data)
+        return super().format(data)
+
+    def _format_links(self, links: list) -> str:
+        if not links:
+            return _render_to_string(Text("No links found", style="yellow"))
+
+        table = Table(
+            title=f"Issue Links ({len(links)})",
+            box=box.ROUNDED,
+            header_style="bold",
+            border_style="dim",
+        )
+
+        table.add_column("Relationship", min_width=20)
+        table.add_column("Issue", style="cyan", min_width=12)
+        table.add_column("Summary", max_width=35)
+        table.add_column("Status", min_width=12)
+
+        for link in links:
+            link_type = link.get("type", {})
+
+            # Determine direction and get linked issue
+            if "outwardIssue" in link:
+                direction = link_type.get("outward", "?")
+                linked = link.get("outwardIssue", {})
+            else:
+                direction = link_type.get("inward", "?")
+                linked = link.get("inwardIssue", {})
+
+            key = linked.get("key", "?")
+            summary = linked.get("fields", {}).get("summary", "?")[:35]
+            status = linked.get("fields", {}).get("status", {}).get("name", "?")
+            status_icon, status_style = _get_status_style(status)
+
+            table.add_row(
+                direction,
+                _make_issue_link(key),
+                summary,
+                Text(f"{status_icon} {status}", style=status_style),
+            )
+
+        return _render_to_string(table)
+
+
+class JiraLinksAIFormatter(AIFormatter):
+    """AI-optimized issue links."""
+
+    def format(self, data: Any) -> str:
+        if isinstance(data, list) and (not data or "type" in data[0] if data else True):
+            return self._format_links(data)
+        return super().format(data)
+
+    def _format_links(self, links: list) -> str:
+        if not links:
+            return "NO_LINKS"
+        lines = [f"LINKS: {len(links)}"]
+        for link in links:
+            link_type = link.get("type", {})
+            if "outwardIssue" in link:
+                direction = link_type.get("outward", "?")
+                linked = link.get("outwardIssue", {})
+            else:
+                direction = link_type.get("inward", "?")
+                linked = link.get("inwardIssue", {})
+            key = linked.get("key", "?")
+            summary = linked.get("fields", {}).get("summary", "?")[:50]
+            lines.append(f"- {direction} {key}: {summary}")
+        return "\n".join(lines)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Watchers Formatters
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class JiraWatchersHumanFormatter(HumanFormatter):
+    """Human-friendly watchers list."""
+
+    def format(self, data: Any) -> str:
+        if isinstance(data, dict) and "watchers" in data:
+            return self._format_watchers(data)
+        return super().format(data)
+
+    def _format_watchers(self, data: dict) -> str:
+        watchers = data.get("watchers", [])
+        count = data.get("watchCount", len(watchers))
+
+        if not watchers:
+            return _render_to_string(Text(f"No watchers (count: {count})", style="yellow"))
+
+        table = Table(
+            title=f"Watchers ({count})",
+            box=box.SIMPLE,
+            header_style="bold",
+        )
+
+        table.add_column("Name", style="cyan", min_width=25)
+        table.add_column("Username", style="dim", min_width=20)
+
+        for w in watchers:
+            table.add_row(
+                w.get("displayName", "?"),
+                w.get("name", w.get("key", "?")),
+            )
+
+        return _render_to_string(table)
+
+
+class JiraWatchersAIFormatter(AIFormatter):
+    """AI-optimized watchers list."""
+
+    def format(self, data: Any) -> str:
+        if isinstance(data, dict) and "watchers" in data:
+            return self._format_watchers(data)
+        return super().format(data)
+
+    def _format_watchers(self, data: dict) -> str:
+        watchers = data.get("watchers", [])
+        count = data.get("watchCount", len(watchers))
+        if not watchers:
+            return f"WATCHERS: 0 (count: {count})"
+        lines = [f"WATCHERS: {count}"]
+        for w in watchers:
+            lines.append(f"- {w.get('displayName', '?')} ({w.get('name', '?')})")
+        return "\n".join(lines)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Attachments Formatters
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class JiraAttachmentsHumanFormatter(HumanFormatter):
+    """Human-friendly attachments list."""
+
+    def format(self, data: Any) -> str:
+        if isinstance(data, list) and (not data or "filename" in data[0] if data else True):
+            return self._format_attachments(data)
+        return super().format(data)
+
+    def _format_attachments(self, attachments: list) -> str:
+        if not attachments:
+            return _render_to_string(Text("No attachments", style="yellow"))
+
+        table = Table(
+            title=f"Attachments ({len(attachments)})",
+            box=box.SIMPLE,
+            header_style="bold",
+        )
+
+        table.add_column("ID", style="dim", width=8)
+        table.add_column("Filename", style="cyan", min_width=25)
+        table.add_column("Size", justify="right", width=10)
+        table.add_column("Author", min_width=15)
+
+        for a in attachments:
+            size = a.get("size", 0)
+            if size > 1024 * 1024:
+                size_str = f"{size / (1024*1024):.1f} MB"
+            elif size > 1024:
+                size_str = f"{size / 1024:.1f} KB"
+            else:
+                size_str = f"{size} B"
+
+            table.add_row(
+                str(a.get("id", "?")),
+                a.get("filename", "?"),
+                size_str,
+                a.get("author", {}).get("displayName", "?"),
+            )
+
+        return _render_to_string(table)
+
+
+class JiraAttachmentsAIFormatter(AIFormatter):
+    """AI-optimized attachments list."""
+
+    def format(self, data: Any) -> str:
+        if isinstance(data, list) and (not data or "filename" in data[0] if data else True):
+            return self._format_attachments(data)
+        return super().format(data)
+
+    def _format_attachments(self, attachments: list) -> str:
+        if not attachments:
+            return "NO_ATTACHMENTS"
+        lines = [f"ATTACHMENTS: {len(attachments)}"]
+        for a in attachments:
+            lines.append(f"- {a.get('filename', '?')} (id:{a.get('id')}, {a.get('size', 0)} bytes)")
+        return "\n".join(lines)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Web Links Formatters
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class JiraWebLinksHumanFormatter(HumanFormatter):
+    """Human-friendly web links list."""
+
+    def format(self, data: Any) -> str:
+        if isinstance(data, list) and (not data or "object" in data[0] if data else True):
+            return self._format_weblinks(data)
+        return super().format(data)
+
+    def _format_weblinks(self, links: list) -> str:
+        if not links:
+            return _render_to_string(Text("No web links", style="yellow"))
+
+        table = Table(
+            title=f"Web Links ({len(links)})",
+            box=box.SIMPLE,
+            header_style="bold",
+        )
+
+        table.add_column("ID", style="dim", width=8)
+        table.add_column("Title", style="cyan", min_width=30)
+        table.add_column("URL", max_width=60, overflow="fold")
+
+        for link in links:
+            obj = link.get("object", {})
+            table.add_row(
+                str(link.get("id", "?")),
+                obj.get("title", "?"),
+                obj.get("url", "?"),  # No truncation - let Rich handle overflow
+            )
+
+        return _render_to_string(table)
+
+
+class JiraWebLinksAIFormatter(AIFormatter):
+    """AI-optimized web links list."""
+
+    def format(self, data: Any) -> str:
+        if isinstance(data, list) and (not data or "object" in data[0] if data else True):
+            return self._format_weblinks(data)
+        return super().format(data)
+
+    def _format_weblinks(self, links: list) -> str:
+        if not links:
+            return "NO_WEBLINKS"
+        lines = [f"WEBLINKS: {len(links)}"]
+        for link in links:
+            obj = link.get("object", {})
+            lines.append(f"- {obj.get('title', '?')}: {obj.get('url', '?')}")
+        return "\n".join(lines)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Worklogs Formatters
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class JiraWorklogsHumanFormatter(HumanFormatter):
+    """Human-friendly worklogs list."""
+
+    def format(self, data: Any) -> str:
+        if isinstance(data, list) and (not data or "timeSpent" in data[0] if data else True):
+            return self._format_worklogs(data)
+        return super().format(data)
+
+    def _format_worklogs(self, worklogs: list) -> str:
+        if not worklogs:
+            return _render_to_string(Text("No worklogs", style="yellow"))
+
+        table = Table(
+            title=f"Worklogs ({len(worklogs)})",
+            box=box.SIMPLE,
+            header_style="bold",
+        )
+
+        table.add_column("ID", style="dim", width=8)
+        table.add_column("Author", style="cyan", min_width=20)
+        table.add_column("Time", min_width=10)
+        table.add_column("Date", min_width=12)
+        table.add_column("Comment", max_width=30)
+
+        for w in worklogs:
+            table.add_row(
+                str(w.get("id", "?")),
+                w.get("author", {}).get("displayName", "?"),
+                w.get("timeSpent", "?"),
+                w.get("started", "?")[:10],
+                (w.get("comment", "") or "")[:30],
+            )
+
+        return _render_to_string(table)
+
+
+class JiraWorklogsAIFormatter(AIFormatter):
+    """AI-optimized worklogs list."""
+
+    def format(self, data: Any) -> str:
+        if isinstance(data, list) and (not data or "timeSpent" in data[0] if data else True):
+            return self._format_worklogs(data)
+        return super().format(data)
+
+    def _format_worklogs(self, worklogs: list) -> str:
+        if not worklogs:
+            return "NO_WORKLOGS"
+        lines = [f"WORKLOGS: {len(worklogs)}"]
+        for w in worklogs:
+            author = w.get("author", {}).get("displayName", "?")
+            time = w.get("timeSpent", "?")
+            date = w.get("started", "?")[:10]
+            lines.append(f"- {author}: {time} on {date}")
+        return "\n".join(lines)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # Register Formatters
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -529,6 +897,30 @@ def register_jira_formatters():
 
     formatter_registry.register("jira", "comments", "human", JiraCommentsHumanFormatter)
     formatter_registry.register("jira", "comments", "ai", JiraCommentsAIFormatter)
+
+    # Link types formatters
+    formatter_registry.register("jira", "linktypes", "human", JiraLinkTypesHumanFormatter)
+    formatter_registry.register("jira", "linktypes", "ai", JiraLinkTypesAIFormatter)
+
+    # Issue links formatters
+    formatter_registry.register("jira", "links", "human", JiraLinksHumanFormatter)
+    formatter_registry.register("jira", "links", "ai", JiraLinksAIFormatter)
+
+    # Watchers formatters
+    formatter_registry.register("jira", "watchers", "human", JiraWatchersHumanFormatter)
+    formatter_registry.register("jira", "watchers", "ai", JiraWatchersAIFormatter)
+
+    # Attachments formatters
+    formatter_registry.register("jira", "attachments", "human", JiraAttachmentsHumanFormatter)
+    formatter_registry.register("jira", "attachments", "ai", JiraAttachmentsAIFormatter)
+
+    # Web links formatters
+    formatter_registry.register("jira", "weblinks", "human", JiraWebLinksHumanFormatter)
+    formatter_registry.register("jira", "weblinks", "ai", JiraWebLinksAIFormatter)
+
+    # Worklogs formatters
+    formatter_registry.register("jira", "worklogs", "human", JiraWorklogsHumanFormatter)
+    formatter_registry.register("jira", "worklogs", "ai", JiraWorklogsAIFormatter)
 
 
 # Auto-register on import
