@@ -330,6 +330,24 @@ def _generate_plugin_help(plugin) -> dict[str, Any]:
     }
 
 
+def _python_type_to_json(py_type) -> str:
+    """Convert Python type to JSON Schema type string."""
+    if py_type == int:
+        return "integer"
+    elif py_type == float:
+        return "number"
+    elif py_type == bool:
+        return "boolean"
+    elif py_type == str:
+        return "string"
+    elif py_type == list:
+        return "array"
+    elif py_type == dict:
+        return "object"
+    else:
+        return "string"
+
+
 def _generate_command_help(plugin, command: str) -> dict[str, Any]:
     """Generate detailed help for a specific command."""
     for route in plugin.router.routes:
@@ -361,8 +379,47 @@ def _generate_command_help(plugin, command: str) -> dict[str, Any]:
                     "in": "query",
                     "required": is_required,
                 }
+
+                # Extract type annotation for AI consumption
+                # Type is stored in field_info.annotation, not param.type_annotation
+                type_annotation = getattr(param.field_info, "annotation", None)
+                if type_annotation:
+                    # Handle basic types
+                    if type_annotation == int:
+                        param_info["type"] = "integer"
+                    elif type_annotation == float:
+                        param_info["type"] = "number"
+                    elif type_annotation == bool:
+                        param_info["type"] = "boolean"
+                    elif type_annotation == str:
+                        param_info["type"] = "string"
+                    elif hasattr(type_annotation, "__origin__"):
+                        # Handle Optional, List, Literal, etc.
+                        origin = getattr(type_annotation, "__origin__", None)
+                        args = getattr(type_annotation, "__args__", ())
+                        if origin is list:
+                            param_info["type"] = "array"
+                            if args:
+                                param_info["items"] = {"type": _python_type_to_json(args[0])}
+                        elif str(origin) == "typing.Literal" or (hasattr(origin, "__name__") and origin.__name__ == "Literal"):
+                            # Literal type - extract enum values
+                            param_info["type"] = "string"
+                            param_info["enum"] = list(args)
+                    else:
+                        param_info["type"] = "string"  # Default
+
                 if hasattr(param.field_info, "description") and param.field_info.description:
                     param_info["description"] = param.field_info.description
+                    # Try to extract enum values from description like "format: json, human, ai"
+                    desc = param.field_info.description
+                    if ":" in desc and "enum" not in param_info:
+                        # Pattern: "Output format: json, human, ai, markdown"
+                        parts = desc.split(":")
+                        if len(parts) == 2 and "," in parts[1]:
+                            values = [v.strip() for v in parts[1].split(",")]
+                            if all(len(v) < 20 and " " not in v for v in values):
+                                param_info["enum"] = values
+
                 # Only add default if it's a serializable value
                 if not is_required and default_val is not None:
                     try:
@@ -376,11 +433,18 @@ def _generate_command_help(plugin, command: str) -> dict[str, Any]:
 
             # Path parameters
             for param in getattr(route.dependant, "path_params", []):
-                params.append({
+                param_info = {
                     "name": param.name,
                     "in": "path",
                     "required": True,
-                })
+                }
+                # Extract type for path params too
+                type_annotation = getattr(param, "type_annotation", None)
+                if type_annotation:
+                    param_info["type"] = _python_type_to_json(type_annotation)
+                else:
+                    param_info["type"] = "string"
+                params.append(param_info)
 
         # Extract docstring and examples
         endpoint = getattr(route, "endpoint", None)
