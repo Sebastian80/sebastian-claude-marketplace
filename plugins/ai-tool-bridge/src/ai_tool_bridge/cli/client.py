@@ -118,11 +118,17 @@ def print_status(status: dict[str, Any]) -> None:
             healthy = conn.get("healthy", False)
             circuit = conn.get("circuit_state", "unknown")
 
-            # Build status line
+            # Build status line - only show circuit state if not normal (closed)
             if started and healthy:
-                conn_status = f"healthy [{circuit}]"
+                conn_status = "healthy"
             elif started and not healthy:
-                conn_status = f"unhealthy [{circuit}]"
+                failure_count = conn.get("failure_count", 0)
+                if circuit == "open":
+                    conn_status = f"unhealthy [circuit open, {failure_count} failures]"
+                elif circuit == "half_open":
+                    conn_status = "recovering [circuit half-open]"
+                else:
+                    conn_status = "unhealthy"
             else:
                 conn_status = "not started"
 
