@@ -103,23 +103,37 @@ def print_status(status: dict[str, Any]) -> None:
     print()
 
     plugins = status.get("plugins", [])
+    connector_status = status.get("connectors", {})
+    connectors = connector_status.get("connectors", {}) if isinstance(connector_status, dict) else {}
+
     if plugins:
         print("Plugins:")
         for p in plugins:
-            state = "[*]" if p.get("started") else "[ ]"
-            print(f"  {state} {p['name']} v{p['version']}")
+            name = p["name"]
+            started = p.get("started", False)
+            state = "[*]" if started else "[ ]"
+
+            # Get connector info for this plugin (assumes same name)
+            conn = connectors.get(name, {})
+            healthy = conn.get("healthy", False)
+            circuit = conn.get("circuit_state", "unknown")
+
+            # Build status line
+            if started and healthy:
+                conn_status = f"healthy [{circuit}]"
+            elif started and not healthy:
+                conn_status = f"unhealthy [{circuit}]"
+            else:
+                conn_status = "not started"
+
+            print(f"  {state} {name} v{p['version']} - {conn_status}")
+
+            # Show CLI if available
+            cli = p.get("cli")
+            if cli:
+                print(f"      CLI: {cli}")
     else:
         print("No plugins loaded")
-
-    print()
-    connector_status = status.get("connectors", {})
-    connectors = connector_status.get("connectors", {}) if isinstance(connector_status, dict) else {}
-    if connectors:
-        print("Connectors:")
-        for name, c in connectors.items():
-            state = "[*]" if c.get("healthy") else "[ ]"
-            circuit = c.get("circuit_state", "unknown")
-            print(f"  {state} {name} [{circuit}]")
 
 
 def print_error(message: str) -> None:

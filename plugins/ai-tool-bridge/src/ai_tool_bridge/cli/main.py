@@ -23,7 +23,7 @@ from .client import BridgeClient, print_error, print_status
 from .daemon import daemon_status, restart_daemon, start_daemon, stop_daemon
 
 # Built-in commands (not plugin names)
-BUILTIN_COMMANDS = {"start", "stop", "restart", "status", "health", "plugins", "connectors", "reconnect", "notify"}
+BUILTIN_COMMANDS = {"start", "stop", "restart", "status", "health", "plugins", "reconnect", "notify"}
 
 
 def main(args: list[str] | None = None) -> int:
@@ -187,9 +187,6 @@ def create_parser() -> argparse.ArgumentParser:
     # plugins
     subparsers.add_parser("plugins", help="List loaded plugins")
 
-    # connectors
-    subparsers.add_parser("connectors", help="List connectors")
-
     # reconnect
     reconnect_parser = subparsers.add_parser("reconnect", help="Reconnect a connector")
     reconnect_parser.add_argument("name", help="Connector name")
@@ -257,29 +254,10 @@ def run_command(command: str, args: argparse.Namespace, config: BridgeConfig) ->
             else:
                 for p in plugins:
                     state = "[*]" if p.get("started") else "[ ]"
-                    print(f"{state} {p['name']} v{p['version']}")
+                    cli_info = f" (cli: {p['cli']})" if p.get("cli") else ""
+                    print(f"{state} {p['name']} v{p['version']}{cli_info}")
                     if p.get("description"):
                         print(f"    {p['description']}")
-            return 0
-
-        elif command == "connectors":
-            result = client.connectors()
-            connectors = result.get("connectors", {})
-            if not connectors:
-                print("No connectors registered")
-            else:
-                print(f"Status: {result.get('status', 'unknown')}")
-                print(f"Total: {result.get('total', 0)}, Healthy: {result.get('healthy_count', 0)}")
-                print()
-                for name, c in connectors.items():
-                    state = "[*]" if c.get("healthy") else "[ ]"
-                    circuit = c.get("circuit_state", "unknown")
-                    print(f"{state} {name}")
-                    print(f"    Circuit: {circuit}")
-                    if c.get("base_url"):
-                        print(f"    URL: {c['base_url']}")
-                    if c.get("last_error"):
-                        print(f"    Last error: {c['last_error']}")
             return 0
 
         elif command == "reconnect":

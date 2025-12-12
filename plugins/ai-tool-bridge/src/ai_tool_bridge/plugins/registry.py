@@ -39,18 +39,22 @@ class PluginRegistry:
     def __init__(self) -> None:
         self._plugins: dict[str, PluginProtocol] = {}
         self._started: set[str] = set()
+        self._cli_commands: dict[str, str] = {}  # plugin_name -> cli_command
 
-    def register(self, plugin: PluginProtocol) -> None:
+    def register(self, plugin: PluginProtocol, cli_command: str | None = None) -> None:
         """Register a plugin.
 
         Args:
             plugin: Plugin instance implementing PluginProtocol
+            cli_command: Optional CLI command name (e.g., "jira")
         """
         if plugin.name in self._plugins:
             logger.warning("plugin_already_registered", name=plugin.name)
             return
 
         self._plugins[plugin.name] = plugin
+        if cli_command:
+            self._cli_commands[plugin.name] = cli_command
         logger.info("plugin_registered", name=plugin.name, version=plugin.version)
 
     def unregister(self, name: str) -> PluginProtocol | None:
@@ -71,15 +75,18 @@ class PluginRegistry:
 
     def list_plugins(self) -> list[dict[str, Any]]:
         """List all registered plugins with their status."""
-        return [
-            {
+        result = []
+        for name, plugin in self._plugins.items():
+            info = {
                 "name": plugin.name,
                 "version": plugin.version,
                 "description": plugin.description,
                 "started": name in self._started,
             }
-            for name, plugin in self._plugins.items()
-        ]
+            if name in self._cli_commands:
+                info["cli"] = self._cli_commands[name]
+            result.append(info)
+        return result
 
     async def startup(self, name: str) -> bool:
         """Start a specific plugin.

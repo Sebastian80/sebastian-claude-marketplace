@@ -151,7 +151,10 @@ def _load_plugins_sync(config: BridgeConfig) -> None:
     for manifest in manifests:
         try:
             plugin = load_plugin(manifest, bridge_context)
-            plugin_registry.register(plugin)
+
+            # Get CLI command name if declared
+            cli_command = manifest.cli.get("command") if manifest.cli else None
+            plugin_registry.register(plugin, cli_command=cli_command)
 
             # Install CLI wrapper if declared in manifest
             install_cli(manifest)
