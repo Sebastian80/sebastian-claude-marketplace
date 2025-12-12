@@ -61,7 +61,7 @@ async def get_project_components(
 ):
     """Get project components."""
     try:
-        components = client.project_components(key)
+        components = client.get_project_components(key)
         return formatted(components, format, "components")
     except Exception as e:
         if "does not exist" in str(e).lower() or "404" in str(e):
@@ -77,7 +77,7 @@ async def get_project_versions(
 ):
     """Get project versions."""
     try:
-        versions = client.project_versions(key)
+        versions = client.get_project_versions(key)
         return formatted(versions, format, "versions")
     except Exception as e:
         if "does not exist" in str(e).lower() or "404" in str(e):
