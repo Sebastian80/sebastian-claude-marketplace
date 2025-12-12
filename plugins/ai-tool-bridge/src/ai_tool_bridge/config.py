@@ -11,6 +11,7 @@ Environment variables:
 - BRIDGE_TIMEOUT: Idle timeout in seconds (default: 1800)
 - BRIDGE_LOG_LEVEL: Log level (default: INFO)
 - BRIDGE_RUNTIME_DIR: Runtime directory (default: ~/.local/share/ai-tool-bridge)
+- BRIDGE_NOTIFICATIONS: Enable desktop notifications (default: true)
 """
 
 import os
@@ -31,6 +32,14 @@ def _get_env_int(key: str, default: int) -> int:
     return int(_get_env(key, str(default)))
 
 
+def _get_env_bool(key: str, default: bool) -> bool:
+    """Get boolean environment variable."""
+    val = os.environ.get(f"BRIDGE_{key}")
+    if val is None:
+        return default
+    return val.lower() in ("true", "1", "yes", "on")
+
+
 def _get_env_path(key: str, default: Path) -> Path:
     """Get path environment variable."""
     val = os.environ.get(f"BRIDGE_{key}")
@@ -48,6 +57,9 @@ class BridgeConfig:
     log_level: str = _get_env("LOG_LEVEL", "INFO")
 
     runtime_dir: Path = _get_env_path("RUNTIME_DIR", DEFAULT_RUNTIME_DIR)
+
+    # Desktop notifications
+    notifications_enabled: bool = _get_env_bool("NOTIFICATIONS", True)
 
     # Log rotation
     log_max_bytes: int = 5 * 1024 * 1024  # 5MB

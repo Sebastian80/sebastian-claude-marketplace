@@ -22,11 +22,13 @@ Route modules:
 - statuses: Status values
 - fields: Field metadata
 - filters: Saved JQL filters
+- help: Self-describing API documentation
 """
 
 from fastapi import APIRouter
 
 from .health import router as health_router
+from .help import router as help_router
 from .issues import router as issues_router
 from .search import router as search_router
 from .workflow import router as workflow_router
@@ -49,8 +51,9 @@ def create_router() -> APIRouter:
     """Create and return the combined router with all endpoints."""
     router = APIRouter()
 
-    # Health check (first for quick access)
+    # Health check and help (first for quick access)
     router.include_router(health_router)        # /health
+    router.include_router(help_router)          # /help, /help/{endpoint}
 
     # Core issue operations
     router.include_router(issues_router)        # /issue/{key}, /create

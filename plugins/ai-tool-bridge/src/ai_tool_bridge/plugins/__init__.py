@@ -26,6 +26,7 @@ Example:
     await plugin_registry.startup_all()
 """
 
+from .cli import install_cli, is_cli_installed, uninstall_cli
 from .discovery import (
     DEFAULT_PLUGIN_PATHS,
     PluginManifest,
@@ -36,6 +37,10 @@ from .loader import PluginLoadError, load_plugin, load_plugin_from_path
 from .registry import PluginRegistry, plugin_registry
 
 __all__ = [
+    # CLI
+    "install_cli",
+    "uninstall_cli",
+    "is_cli_installed",
     # Discovery
     "DEFAULT_PLUGIN_PATHS",
     "PluginManifest",

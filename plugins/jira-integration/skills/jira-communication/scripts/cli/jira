@@ -1,0 +1,5 @@
+#!/bin/bash
+# Jira CLI - routes commands to daemon via bridge
+# Installed by: jira-integration plugin
+BRIDGE_VENV="${BRIDGE_VENV:-$HOME/.claude/plugins/marketplaces/sebastian-marketplace/plugins/ai-tool-bridge/.venv}"
+exec "$BRIDGE_VENV/bin/bridge" jira "$@"

@@ -106,3 +106,42 @@ async def reconnect_connector(name: str) -> dict[str, Any]:
     await connector.connect()
 
     return {"status": "reconnected", "connector": name}
+
+
+@router.get("/notifications")
+async def get_notifications_status() -> dict[str, Any]:
+    """Get notifications status."""
+    from ..lifecycle import get_notifier
+
+    notifier = get_notifier()
+    return {
+        "enabled": notifier.available if notifier else False,
+        "available": notifier is not None and notifier._notify_send is not None,
+    }
+
+
+@router.post("/notifications/{action}")
+async def toggle_notifications(action: str) -> dict[str, Any]:
+    """Enable or disable notifications.
+
+    Actions: enable, disable, test
+    """
+    from fastapi import HTTPException
+
+    from ..lifecycle import get_notifier
+
+    notifier = get_notifier()
+    if not notifier:
+        raise HTTPException(status_code=500, detail="Notifier not initialized")
+
+    if action == "enable":
+        notifier._enabled = True
+        return {"status": "enabled", "available": notifier.available}
+    elif action == "disable":
+        notifier._enabled = False
+        return {"status": "disabled"}
+    elif action == "test":
+        success = notifier.info("AI Tool Bridge", "Test notification")
+        return {"status": "sent" if success else "failed", "available": notifier.available}
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown action: {action}")

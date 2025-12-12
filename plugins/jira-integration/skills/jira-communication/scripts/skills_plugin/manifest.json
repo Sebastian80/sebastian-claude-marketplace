@@ -10,5 +10,9 @@
     "atlassian-python-api>=4.0",
     "rich>=13.0.0"
   ],
-  "bridge_version": ">=1.0.0"
+  "bridge_version": ">=1.0.0",
+  "cli": {
+    "command": "jira",
+    "script": "../cli/jira"
+  }
 }

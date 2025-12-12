@@ -7,13 +7,10 @@ Endpoints:
 - GET /worklog/{key}/{worklog_id} - Get specific worklog
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
-from ..client import (
-    get_client,
-    success_response,
-    formatted_response,
-)
+from ..deps import jira
+from ..response import success, formatted
 
 router = APIRouter()
 
@@ -22,22 +19,13 @@ router = APIRouter()
 async def list_worklogs(
     key: str,
     format: str = Query("json", description="Output format: json, human, ai, markdown"),
+    client=Depends(jira),
 ):
-    """List worklogs on issue.
-
-    Returns all time logged against the specified issue.
-    Each worklog includes time spent, author, and comment.
-
-    Examples:
-        jira worklogs PROJ-123
-        jira worklogs PROJ-123 --format human
-        jira worklogs PROJ-123 --format ai
-    """
-    client = await get_client()
+    """List worklogs on issue."""
     try:
         result = client.issue_get_worklog(key)
-        worklogs = result.get('worklogs', [])
-        return formatted_response(worklogs, format, "worklogs")
+        worklogs = result.get("worklogs", [])
+        return formatted(worklogs, format, "worklogs")
     except Exception as e:
         if "does not exist" in str(e).lower() or "404" in str(e):
             raise HTTPException(status_code=404, detail=f"Issue {key} not found")
@@ -48,49 +36,24 @@ async def list_worklogs(
 async def add_worklog(
     key: str,
     time_spent: str = Query(..., alias="timeSpent", description="Time spent (e.g., '1h 30m', '2d', '30m')"),
-    comment: str | None = Query(None, description="Work description (use Jira wiki markup, not Markdown)"),
-    started: str | None = Query(None, description="Start time (ISO 8601 format, e.g., '2025-01-15T10:00:00.000+0000')"),
+    comment: str | None = Query(None, description="Work description"),
+    started: str | None = Query(None, description="Start time (ISO 8601 format)"),
+    client=Depends(jira),
 ):
-    """Add worklog to issue (or get specific worklog by ID).
-
-    This command supports two operations:
-    - POST: Log time spent on an issue (with --timeSpent)
-    - GET: Retrieve a specific worklog by ID (jira worklog ISSUE-KEY WORKLOG_ID)
-
-    Time format: Xd Xh Xm (days, hours, minutes).
-    Examples: "2h", "1d 4h", "30m", "1d 2h 30m"
-
-    IMPORTANT: Use Jira wiki markup in comment, NOT Markdown:
-    - Bold: *text* (not **text**)
-    - Code: {{code}} (not `code`)
-    - Headings: h2. Title (not ## Title)
-
-    Add worklog examples:
-        jira worklog PROJ-123 --timeSpent "2h"
-        jira worklog PROJ-123 --timeSpent "1d 4h" --comment "Implementation complete"
-        jira worklog PROJ-123 --timeSpent "30m" --comment "Code review"
-
-    Get specific worklog examples:
-        jira worklog PROJ-123 12345
-        jira worklog PROJ-123 12345 --format human
-    """
-    client = await get_client()
+    """Add worklog to issue."""
     try:
-        kwargs = {'comment': comment} if comment else {}
+        kwargs = {"comment": comment} if comment else {}
         if started:
-            kwargs['started'] = started
+            kwargs["started"] = started
 
         result = client.issue_add_worklog(key, time_spent, **kwargs)
-        return success_response(result)
+        return success(result)
     except Exception as e:
         error_msg = str(e)
         if "does not exist" in error_msg.lower() or "404" in error_msg:
             raise HTTPException(status_code=404, detail=f"Issue {key} not found")
         elif "time" in error_msg.lower():
-            raise HTTPException(
-                status_code=400,
-                detail=f"{error_msg}. Use format like '2h', '1d 4h', '30m'"
-            )
+            raise HTTPException(status_code=400, detail=f"{error_msg}. Use format like '2h', '1d 4h', '30m'")
         raise HTTPException(status_code=500, detail=error_msg)
 
 
@@ -99,28 +62,15 @@ async def get_worklog(
     key: str,
     worklog_id: str,
     format: str = Query("json", description="Output format: json, human, ai, markdown"),
+    client=Depends(jira),
 ):
-    """Get specific worklog by ID.
-
-    Returns details of a single worklog entry including author,
-    time spent, comment, and timestamps.
-
-    Examples:
-        jira worklog PROJ-123 12345
-        jira worklog PROJ-123 12345 --format human
-    """
-    client = await get_client()
+    """Get specific worklog by ID."""
     try:
-        # atlassian-python-api doesn't have get_worklog_by_id, use REST API
-        # GET /rest/api/2/issue/{issueIdOrKey}/worklog/{id}
         url = f"rest/api/2/issue/{key}/worklog/{worklog_id}"
         worklog = client.get(url)
-        return formatted_response(worklog, format, "worklog")
+        return formatted(worklog, format, "worklog")
     except Exception as e:
         error_msg = str(e)
         if "does not exist" in error_msg.lower() or "404" in error_msg:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Worklog {worklog_id} not found on issue {key}. Use 'jira worklogs {key}' to list available worklogs."
-            )
+            raise HTTPException(status_code=404, detail=f"Worklog {worklog_id} not found on issue {key}")
         raise HTTPException(status_code=500, detail=error_msg)

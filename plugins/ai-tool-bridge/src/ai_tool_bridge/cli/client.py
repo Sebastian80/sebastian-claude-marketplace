@@ -27,7 +27,7 @@ class BridgeClient:
 
     def __init__(self, config: BridgeConfig | None = None) -> None:
         self.config = config or BridgeConfig()
-        self.base_url = f"http://{self.config.host}:{self.config.port}"
+        self.base_url = self.config.bridge_url  # Use bridge_url which uses ::1 for localhost
         self._client = httpx.Client(timeout=5.0)
 
     def is_running(self) -> bool:
@@ -65,6 +65,14 @@ class BridgeClient:
     def reconnect(self, connector: str) -> dict[str, Any]:
         """Force reconnect a connector."""
         return self._post(f"/connectors/{connector}/reconnect")
+
+    def notifications_status(self) -> dict[str, Any]:
+        """Get notifications status."""
+        return self._get("/notifications")
+
+    def notifications_action(self, action: str) -> dict[str, Any]:
+        """Enable, disable, or test notifications."""
+        return self._post(f"/notifications/{action}")
 
     def _get(self, path: str) -> Any:
         """Make GET request to daemon."""
@@ -104,7 +112,8 @@ def print_status(status: dict[str, Any]) -> None:
         print("No plugins loaded")
 
     print()
-    connectors = status.get("connectors", {})
+    connector_status = status.get("connectors", {})
+    connectors = connector_status.get("connectors", {}) if isinstance(connector_status, dict) else {}
     if connectors:
         print("Connectors:")
         for name, c in connectors.items():

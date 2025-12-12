@@ -8,12 +8,10 @@ Endpoints:
 - GET /project/{key}/versions - Get project versions
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
-from ..client import (
-    get_client,
-    formatted_response,
-)
+from ..deps import jira
+from ..response import formatted
 
 router = APIRouter()
 
@@ -21,30 +19,20 @@ router = APIRouter()
 @router.get("/projects")
 async def list_projects(
     include_archived: bool = Query(False, alias="includeArchived", description="Include archived projects"),
-    expand: str | None = Query(None, description="Fields to expand (e.g., 'description,lead')"),
+    expand: str | None = Query(None, description="Fields to expand"),
     format: str = Query("json", description="Output format: json, human, ai, markdown"),
+    client=Depends(jira),
 ):
-    """List all Jira projects.
-
-    Returns a list of all projects accessible to the authenticated user.
-    By default, archived projects are excluded.
-
-    Examples:
-        jira projects
-        jira projects --format human
-        jira projects --includeArchived
-        jira projects --expand "description,lead"
-    """
-    client = await get_client()
+    """List all Jira projects."""
     try:
         kwargs = {}
         if include_archived:
-            kwargs['included_archived'] = True
+            kwargs["included_archived"] = True
         if expand:
-            kwargs['expand'] = expand
+            kwargs["expand"] = expand
 
         projects = client.projects(**kwargs)
-        return formatted_response(projects, format, "projects")
+        return formatted(projects, format, "projects")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -53,21 +41,12 @@ async def list_projects(
 async def get_project(
     key: str,
     format: str = Query("json", description="Output format: json, human, ai, markdown"),
+    client=Depends(jira),
 ):
-    """Get project details by key.
-
-    Returns comprehensive project information including name, lead,
-    description, issue types, and other metadata.
-
-    Examples:
-        jira project PROJ
-        jira project PROJ --format human
-        jira project MYPROJECT --format ai
-    """
-    client = await get_client()
+    """Get project details by key."""
     try:
         project = client.project(key)
-        return formatted_response(project, format, "project")
+        return formatted(project, format, "project")
     except Exception as e:
         if "does not exist" in str(e).lower() or "404" in str(e):
             raise HTTPException(status_code=404, detail=f"Project {key} not found")
@@ -78,22 +57,12 @@ async def get_project(
 async def get_project_components(
     key: str,
     format: str = Query("json", description="Output format: json, human, ai, markdown"),
+    client=Depends(jira),
 ):
-    """Get project components.
-
-    Returns all components (logical groupings of issues) defined
-    in the specified project.
-
-    Components are used to organize issues by area, module, or team.
-
-    Examples:
-        jira project PROJ components
-        jira project PROJ components --format human
-    """
-    client = await get_client()
+    """Get project components."""
     try:
         components = client.project_components(key)
-        return formatted_response(components, format, "components")
+        return formatted(components, format, "components")
     except Exception as e:
         if "does not exist" in str(e).lower() or "404" in str(e):
             raise HTTPException(status_code=404, detail=f"Project {key} not found")
@@ -104,23 +73,12 @@ async def get_project_components(
 async def get_project_versions(
     key: str,
     format: str = Query("json", description="Output format: json, human, ai, markdown"),
+    client=Depends(jira),
 ):
-    """Get project versions.
-
-    Returns all versions (releases, sprints) defined in the specified project.
-    Includes both released and unreleased versions.
-
-    Versions are used to track which release an issue is targeting or fixed in.
-
-    Examples:
-        jira project PROJ versions
-        jira project PROJ versions --format human
-        jira project MYPROJECT versions --format ai
-    """
-    client = await get_client()
+    """Get project versions."""
     try:
         versions = client.project_versions(key)
-        return formatted_response(versions, format, "versions")
+        return formatted(versions, format, "versions")
     except Exception as e:
         if "does not exist" in str(e).lower() or "404" in str(e):
             raise HTTPException(status_code=404, detail=f"Project {key} not found")

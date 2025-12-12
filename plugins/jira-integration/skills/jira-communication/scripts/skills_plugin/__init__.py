@@ -1,20 +1,7 @@
 """
 Jira plugin for AI Tool Bridge.
 
-Provides Jira issue tracking and workflow automation via persistent connection.
-
-Features:
-- Issue CRUD (get, create, update)
-- JQL search with multiple output formats
-- Smart workflow transitions (multi-step)
-- Comments and issue links
-- Web links (remote links)
-- Persistent connection with auto-reconnect
-- Health monitoring and self-healing
-
-Usage:
-    from skills_plugin import JiraPlugin
-    plugin = JiraPlugin()
+Provides Jira issue tracking and workflow automation via JiraConnector.
 """
 
 import sys
@@ -32,29 +19,4 @@ register_jira_formatters()
 # Export plugin class
 from skills_plugin.plugin import JiraPlugin
 
-# Export helper functions for tests
-from skills_plugin.client import (
-    is_connection_error,
-    with_retry,
-    reset_client,
-    check_connection,
-    get_client_sync,
-    success_response,
-    error_response,
-    formatted_response,
-    formatted_error,
-)
-
-__all__ = [
-    "JiraPlugin",
-    # Helper functions
-    "is_connection_error",
-    "with_retry",
-    "reset_client",
-    "check_connection",
-    "get_client_sync",
-    "success_response",
-    "error_response",
-    "formatted_response",
-    "formatted_error",
-]
+__all__ = ["JiraPlugin"]

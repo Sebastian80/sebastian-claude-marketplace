@@ -14,8 +14,8 @@ from fastapi import FastAPI
 from ..builtins import register_builtin_formatters
 from ..config import BridgeConfig
 from ..connectors import connector_registry
-from ..lifecycle import IdleMonitor, SignalHandler
-from ..plugins import discover_plugins, load_plugin, plugin_registry
+from ..lifecycle import IdleMonitor, SignalHandler, get_notifier, init_notifier
+from ..plugins import discover_plugins, install_cli, load_plugin, plugin_registry
 from .middleware import ActivityMiddleware, ErrorMiddleware, LoggingMiddleware
 from .routes import router as core_router
 
@@ -44,6 +44,9 @@ def create_app(
         on_idle=signal_handler.trigger_shutdown if signal_handler else None,
     )
 
+    # Initialize notifier
+    notifier = init_notifier(enabled=config.notifications_enabled)
+
     # Register builtin formatters (synchronous)
     register_builtin_formatters()
 
@@ -56,10 +59,24 @@ def create_app(
         logger.info("bridge_starting", version="1.0.0")
 
         # Connect all connectors
-        await connector_registry.connect_all()
+        connector_results = await connector_registry.connect_all()
+
+        # Send notifications for connector results
+        for name, error in connector_results.items():
+            if error is None:
+                notifier.connector_connected(name)
+            else:
+                notifier.connector_connection_failed(name, str(error))
 
         # Start all plugins (async startup)
-        await plugin_registry.startup_all()
+        plugin_results = await plugin_registry.startup_all()
+
+        # Send notifications for plugin results
+        for name, success in plugin_results.items():
+            if success:
+                notifier.plugin_started(name)
+            else:
+                notifier.plugin_start_failed(name, "Startup failed")
 
         # Start idle monitoring
         await idle_monitor.start()
@@ -70,6 +87,9 @@ def create_app(
             connectors=len(connector_registry._connectors),
         )
 
+        # Send daemon started notification
+        notifier.daemon_started(len(plugin_registry))
+
         yield
 
         # Shutdown
@@ -78,6 +98,9 @@ def create_app(
         await idle_monitor.stop()
         await plugin_registry.shutdown_all()
         await connector_registry.disconnect_all()
+
+        # Send daemon stopped notification
+        notifier.daemon_stopped()
 
         logger.info("bridge_stopped")
 
@@ -105,6 +128,7 @@ def create_app(
     # Store config and components on app state
     app.state.config = config
     app.state.idle_monitor = idle_monitor
+    app.state.notifier = notifier
 
     return app
 
@@ -128,6 +152,9 @@ def _load_plugins_sync(config: BridgeConfig) -> None:
         try:
             plugin = load_plugin(manifest, bridge_context)
             plugin_registry.register(plugin)
+
+            # Install CLI wrapper if declared in manifest
+            install_cli(manifest)
         except Exception as e:
             logger.error(
                 "plugin_load_failed",

@@ -23,7 +23,7 @@ from .client import BridgeClient, print_error, print_status
 from .daemon import daemon_status, restart_daemon, start_daemon, stop_daemon
 
 # Built-in commands (not plugin names)
-BUILTIN_COMMANDS = {"start", "stop", "restart", "status", "health", "plugins", "connectors", "reconnect"}
+BUILTIN_COMMANDS = {"start", "stop", "restart", "status", "health", "plugins", "connectors", "reconnect", "notify"}
 
 
 def main(args: list[str] | None = None) -> int:
@@ -194,6 +194,14 @@ def create_parser() -> argparse.ArgumentParser:
     reconnect_parser = subparsers.add_parser("reconnect", help="Reconnect a connector")
     reconnect_parser.add_argument("name", help="Connector name")
 
+    # notify
+    notify_parser = subparsers.add_parser("notify", help="Manage notifications")
+    notify_parser.add_argument(
+        "action",
+        choices=["status", "enable", "disable", "test"],
+        help="Notification action",
+    )
+
     return parser
 
 
@@ -255,15 +263,21 @@ def run_command(command: str, args: argparse.Namespace, config: BridgeConfig) ->
             return 0
 
         elif command == "connectors":
-            connectors = client.connectors()
+            result = client.connectors()
+            connectors = result.get("connectors", {})
             if not connectors:
                 print("No connectors registered")
             else:
+                print(f"Status: {result.get('status', 'unknown')}")
+                print(f"Total: {result.get('total', 0)}, Healthy: {result.get('healthy_count', 0)}")
+                print()
                 for name, c in connectors.items():
                     state = "[*]" if c.get("healthy") else "[ ]"
                     circuit = c.get("circuit_state", "unknown")
                     print(f"{state} {name}")
                     print(f"    Circuit: {circuit}")
+                    if c.get("base_url"):
+                        print(f"    URL: {c['base_url']}")
                     if c.get("last_error"):
                         print(f"    Last error: {c['last_error']}")
             return 0
@@ -272,6 +286,19 @@ def run_command(command: str, args: argparse.Namespace, config: BridgeConfig) ->
             result = client.reconnect(args.name)
             print(f"Reconnected: {result.get('connector')}")
             return 0
+
+        elif command == "notify":
+            if args.action == "status":
+                result = client.notifications_status()
+                enabled = result.get("enabled", False)
+                available = result.get("available", False)
+                print(f"Notifications: {'enabled' if enabled else 'disabled'}")
+                print(f"System support: {'available' if available else 'not available'}")
+                return 0
+            else:
+                result = client.notifications_action(args.action)
+                print(f"Notifications: {result.get('status', 'unknown')}")
+                return 0
 
     return 0
 

@@ -32,6 +32,7 @@ class PluginManifest:
         description: Human-readable description
         dependencies: List of pip package requirements
         bridge_api: Minimum bridge API version required
+        cli: CLI wrapper configuration {"command": str, "script": str}
     """
 
     def __init__(self, data: dict[str, Any], manifest_path: Path) -> None:
@@ -42,6 +43,7 @@ class PluginManifest:
         self.description = data.get("description", "")
         self.dependencies = data.get("dependencies", [])
         self.bridge_api = data.get("bridge_api", "1.0.0")
+        self.cli = data.get("cli")  # {"command": "jira", "script": "../cli/jira"}
 
     @classmethod
     def from_file(cls, manifest_path: Path) -> "PluginManifest":
@@ -65,7 +67,7 @@ class PluginManifest:
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
-        return {
+        result = {
             "name": self.name,
             "version": self.version,
             "entry_point": self.entry_point,
@@ -74,6 +76,9 @@ class PluginManifest:
             "bridge_api": self.bridge_api,
             "path": str(self.path),
         }
+        if self.cli:
+            result["cli"] = self.cli
+        return result
 
 
 def discover_plugins(

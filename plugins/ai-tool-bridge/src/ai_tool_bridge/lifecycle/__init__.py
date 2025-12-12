@@ -5,6 +5,7 @@ Handles:
 - PID file management (prevent duplicate instances)
 - Signal handling (graceful shutdown on SIGTERM/SIGINT)
 - Idle monitoring (auto-shutdown after inactivity)
+- Desktop notifications (plugin connect/error events)
 
 Example:
     from ai_tool_bridge.lifecycle import (
@@ -31,11 +32,16 @@ Example:
 """
 
 from .idle import IdleMonitor
+from .notifications import Notifier, NotifyLevel, get_notifier, init_notifier
 from .pid import PIDFile, send_signal
 from .signals import SignalHandler, signal_handler
 
 __all__ = [
     "IdleMonitor",
+    "Notifier",
+    "NotifyLevel",
+    "get_notifier",
+    "init_notifier",
     "PIDFile",
     "send_signal",
     "SignalHandler",
