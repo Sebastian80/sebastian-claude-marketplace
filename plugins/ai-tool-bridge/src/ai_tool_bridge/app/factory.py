@@ -62,19 +62,19 @@ def create_app(
         connector_results = await connector_registry.connect_all()
 
         # Send notifications for connector results
+        # Notify only on connection failures (silent success)
         for name, error in connector_results.items():
-            if error is None:
-                notifier.connector_connected(name)
-            else:
+            if error is not None:
                 notifier.connector_connection_failed(name, str(error))
 
         # Start all plugins (async startup)
         plugin_results = await plugin_registry.startup_all()
 
-        # Send notifications for plugin results
+        # Notify only on plugin failures (silent success)
+        started_plugins = []
         for name, success in plugin_results.items():
             if success:
-                notifier.plugin_started(name)
+                started_plugins.append(name)
             else:
                 notifier.plugin_start_failed(name, "Startup failed")
 
@@ -87,8 +87,8 @@ def create_app(
             connectors=len(connector_registry._connectors),
         )
 
-        # Send daemon started notification
-        notifier.daemon_started(len(plugin_registry))
+        # Single notification with plugin names
+        notifier.daemon_started(started_plugins)
 
         yield
 

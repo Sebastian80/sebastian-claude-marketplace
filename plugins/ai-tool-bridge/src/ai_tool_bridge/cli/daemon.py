@@ -84,7 +84,7 @@ def _run_daemon(config: BridgeConfig, pid_file: PIDFile) -> int:
             # Parent - wait briefly then check child started
             time.sleep(0.5)
             if pid_file.is_running():
-                print(f"Bridge started (PID {pid_file.read()})")
+                print(f"Bridge started (PID {pid_file.read()})", file=sys.stderr)
                 return 0
             else:
                 print("Bridge failed to start", file=sys.stderr)

@@ -173,12 +173,14 @@ class Notifier:
             f"Connection failed: {error}",
         )
 
-    def daemon_started(self, plugin_count: int) -> bool:
+    def daemon_started(self, plugins: list[str]) -> bool:
         """Notify that the daemon started."""
-        return self.info(
-            "AI Tool Bridge",
-            f"Started with {plugin_count} plugin{'s' if plugin_count != 1 else ''}",
-        )
+        if not plugins:
+            message = "Started (no plugins)"
+        else:
+            plugin_list = ", ".join(p.title() for p in plugins)
+            message = f"Ready ({plugin_list})"
+        return self.info("AI Tool Bridge", message)
 
     def daemon_stopped(self) -> bool:
         """Notify that the daemon stopped."""
