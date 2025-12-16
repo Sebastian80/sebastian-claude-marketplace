@@ -1,5 +1,5 @@
 ---
-name: jira-communication
+name: jira
 description: >
   MANDATORY when any ticket key appears (PROJ-123, HMKG-2064, etc.) - fetch it immediately.
   Use for: (1) Any ticket/issue key mentioned anywhere - in conversation, files, git branches, errors,
