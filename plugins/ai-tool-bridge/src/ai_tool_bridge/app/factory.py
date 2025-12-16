@@ -11,7 +11,6 @@ from typing import Any
 import structlog
 from fastapi import FastAPI
 
-from ..builtins import register_builtin_formatters
 from ..config import BridgeConfig
 from ..connectors import connector_registry
 from ..lifecycle import IdleMonitor, SignalHandler, get_notifier, init_notifier
@@ -46,9 +45,6 @@ def create_app(
 
     # Initialize notifier
     notifier = init_notifier(enabled=config.notifications_enabled)
-
-    # Register builtin formatters (synchronous)
-    register_builtin_formatters()
 
     # Discover and load plugins BEFORE creating app (so routes can be mounted)
     _load_plugins_sync(config)
