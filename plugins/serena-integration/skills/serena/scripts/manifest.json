@@ -2,8 +2,9 @@
   "name": "serena",
   "version": "1.0.0",
   "description": "Semantic code navigation via Serena",
+  "entry_point": "serena_plugin:SerenaPlugin",
   "dependencies": [
     "httpx>=0.25"
   ],
-  "daemon_version": ">=1.0.0"
+  "bridge_version": ">=1.0.0"
 }

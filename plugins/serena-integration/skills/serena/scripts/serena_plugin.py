@@ -1,8 +1,9 @@
 """
-Serena plugin for skills daemon.
+Serena plugin for AI Tool Bridge.
 
 Provides semantic code navigation via Serena MCP server.
 """
+
 
 import sys
 from pathlib import Path
@@ -10,13 +11,6 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
-
-# Import SkillPlugin from skills-daemon (sibling plugin in plugins/)
-SKILLS_DAEMON = Path(__file__).parent.parent.parent.parent.parent.parent / "skills-daemon"
-if str(SKILLS_DAEMON) not in sys.path:
-    sys.path.insert(0, str(SKILLS_DAEMON))
-
-from skills_daemon.plugins import SkillPlugin
 
 # Add serena_cli to path
 SERENA_SCRIPTS = Path(__file__).parent.parent
@@ -62,12 +56,24 @@ def error_response(message: str, hint: Optional[str] = None) -> JSONResponse:
     return JSONResponse(status_code=400, content=content)
 
 
-class SerenaPlugin(SkillPlugin):
+class SerenaPlugin:
     """Serena semantic code navigation plugin."""
+
+    def __init__(self, bridge_context: dict[str, Any] | None = None) -> None:
+        """Initialize Serena plugin.
+
+        Args:
+            bridge_context: Optional bridge services (unused)
+        """
+        pass
 
     @property
     def name(self) -> str:
         return "serena"
+
+    @property
+    def version(self) -> str:
+        return "1.0.0"
 
     @property
     def description(self) -> str:
@@ -335,3 +341,6 @@ class SerenaPlugin(SkillPlugin):
         if client is None:
             return {"status": "not_connected"}
         return {"status": "connected"}
+
+
+__all__ = ["SerenaPlugin"]
