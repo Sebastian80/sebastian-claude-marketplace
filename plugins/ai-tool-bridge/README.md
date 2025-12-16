@@ -5,10 +5,9 @@ A plugin-based daemon that bridges AI agents to external services via a unified 
 ## Features
 
 - **Plugin Architecture** - Extensible design with auto-discovery
-- **Circuit Breaker** - Self-healing connections to external services
 - **Idle Shutdown** - Auto-stops when inactive to save resources
 - **Unified CLI** - Single `bridge` command for all operations
-- **Multiple Formatters** - JSON, human-readable, AI-optimized, Markdown
+- **Connector Registry** - Centralized lifecycle management for external services
 
 ## Installation
 
@@ -54,18 +53,10 @@ bridge stop
 ```
 ai_tool_bridge/
 ├── contracts/        # Protocol definitions (interfaces)
-│   ├── connector.py  # ConnectorProtocol
-│   ├── formatter.py  # FormatterProtocol
+│   ├── connector.py  # ConnectorProtocol (lifecycle only)
 │   └── plugin.py     # PluginProtocol
-├── connectors/       # HTTP client infrastructure
-│   ├── circuit.py    # Circuit breaker pattern
-│   ├── http.py       # HTTP connector implementation
-│   ├── registry.py   # Connector registry
-│   └── health.py     # Background health monitoring
-├── formatters/       # Response formatting
-│   └── registry.py   # Formatter registry
-├── builtins/         # Default implementations
-│   └── formatters.py # JSON, Human, AI, Markdown formatters
+├── connectors/       # External service management
+│   └── registry.py   # Connector registry (connect/disconnect all)
 ├── plugins/          # Plugin system
 │   ├── discovery.py  # Auto-discover from ~/.claude/plugins
 │   ├── loader.py     # Load plugins from manifest
@@ -83,6 +74,8 @@ ai_tool_bridge/
     ├── daemon.py     # Daemon management (start/stop)
     └── client.py     # HTTP client for CLI commands
 ```
+
+The bridge is intentionally minimal - plugins bring their own HTTP clients, formatters, and transport logic.
 
 ## Configuration
 
@@ -161,51 +154,65 @@ class MyPlugin:
 
 ### Using Connectors
 
-Plugins can use the connector registry for external services:
+Plugins register their own connectors implementing `ConnectorProtocol` (lifecycle only):
 
 ```python
-from ai_tool_bridge.connectors import HTTPConnector, ConnectorConfig
+import httpx
+
+class MyConnector:
+    """Connector implementing lifecycle protocol."""
+
+    def __init__(self):
+        self._client: httpx.AsyncClient | None = None
+        self._healthy = False
+
+    @property
+    def name(self) -> str:
+        return "my-service"
+
+    @property
+    def healthy(self) -> bool:
+        return self._healthy
+
+    @property
+    def circuit_state(self) -> str:
+        return "closed" if self._healthy else "open"
+
+    async def connect(self) -> None:
+        self._client = httpx.AsyncClient(base_url="https://api.example.com")
+        self._healthy = True
+
+    async def disconnect(self) -> None:
+        if self._client:
+            await self._client.aclose()
+        self._healthy = False
+
+    async def check_health(self) -> bool:
+        # Plugin implements its own health check
+        return self._healthy
+
+    def status(self) -> dict:
+        return {"name": self.name, "healthy": self.healthy}
+
+    # Transport methods (NOT in protocol - plugin's own API)
+    async def get(self, path: str) -> dict:
+        resp = await self._client.get(path)
+        return resp.json()
+
 
 class MyPlugin:
     def __init__(self, context: dict | None = None):
         self.connector_registry = context.get("connector_registry")
-
-        # Create connector with circuit breaker
-        config = ConnectorConfig(
-            base_url="https://api.example.com",
-            timeout=30.0,
-        )
-        self.connector = HTTPConnector("example", config)
+        self.connector = MyConnector()
 
     async def startup(self):
-        # Register connector
         self.connector_registry.register(self.connector)
-        await self.connector.connect()
 
     async def shutdown(self):
-        await self.connector.disconnect()
-        self.connector_registry.unregister("example")
+        self.connector_registry.unregister("my-service")
 ```
 
-## Circuit Breaker
-
-Connectors use the circuit breaker pattern for resilience:
-
-```
-CLOSED ──[failures >= threshold]──> OPEN
-   ↑                                  │
-   │                                  │ [timeout]
-   │                                  ↓
-   └───────[success]─────────── HALF_OPEN
-                                      │
-                              [failure]│
-                                      ↓
-                                   OPEN
-```
-
-- **CLOSED**: Normal operation, requests pass through
-- **OPEN**: Requests fail immediately (circuit tripped)
-- **HALF_OPEN**: Testing recovery with limited requests
+The bridge only manages connector lifecycle (connect/disconnect all on startup/shutdown). Transport-specific methods (HTTP, MCP, CLI) are implemented by plugins.
 
 ## API Endpoints
 
