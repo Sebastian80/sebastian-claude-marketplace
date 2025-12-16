@@ -47,7 +47,7 @@ def create_app(
     notifier = init_notifier(enabled=config.notifications_enabled)
 
     # Discover and load plugins BEFORE creating app (so routes can be mounted)
-    _load_plugins_sync(config)
+    _load_plugins_sync(config, notifier)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -129,19 +129,21 @@ def create_app(
     return app
 
 
-def _load_plugins_sync(config: BridgeConfig) -> None:
+def _load_plugins_sync(config: BridgeConfig, notifier: Any) -> None:
     """Discover and load all plugins synchronously.
 
     Called during app creation so routes can be mounted.
 
     Args:
         config: Bridge configuration
+        notifier: Notification service for plugins
     """
     manifests = discover_plugins()
 
     bridge_context: dict[str, Any] = {
         "config": config,
         "connector_registry": connector_registry,
+        "notifier": notifier,
     }
 
     for manifest in manifests:
