@@ -128,7 +128,7 @@ jira issue PROJ-123 --format json       # Raw JSON (explicit)
 
 Add to Claude Code settings for auto-approval:
 ```
-Bash(/home/user/.local/bin/jira:*)
+Bash(jira:*)
 ```
 
 ## Common Workflows
