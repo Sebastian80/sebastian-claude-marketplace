@@ -73,11 +73,11 @@ class JiraPlugin:
 
         logger.info("Jira: shutdown")
 
-    def health_check(self) -> dict[str, Any]:
+    async def health_check(self) -> dict[str, Any]:
         """Check connection health via connector."""
         status = self._connector.status()
         return {
-            "status": "connected" if status["healthy"] else "not_connected",
+            "status": "healthy" if status["healthy"] else "unhealthy",
             "circuit_state": status["circuit_state"],
             "failure_count": status.get("failure_count", 0),
             "can_reconnect": status["circuit_state"] != "open",
