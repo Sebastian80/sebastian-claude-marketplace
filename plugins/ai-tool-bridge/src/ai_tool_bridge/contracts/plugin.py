@@ -68,8 +68,7 @@ class PluginProtocol(Protocol):
         """Called on bridge startup.
 
         Initialize resources:
-        - Register connectors
-        - Register formatters
+        - Register connectors with connector_registry
         - Load configuration
         """
         ...
@@ -78,29 +77,11 @@ class PluginProtocol(Protocol):
         """Called on bridge shutdown.
 
         Cleanup resources:
-        - Close connections
-        - Flush caches
         - Unregister connectors
         """
         ...
 
-    async def connect(self) -> None:
-        """Establish backend connections.
-
-        Called after startup() to connect to external services.
-        Failures are logged but don't prevent bridge from running.
-        """
-        ...
-
-    async def reconnect(self) -> None:
-        """Re-establish connections after failure.
-
-        Default behavior: call connect().
-        Override for custom reconnection logic (backoff, etc.).
-        """
-        ...
-
-    def health_check(self) -> dict[str, Any]:
+    async def health_check(self) -> dict[str, Any]:
         """Return plugin health status.
 
         Called by /health endpoint.
