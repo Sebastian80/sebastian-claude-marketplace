@@ -1,22 +1,101 @@
 """
-Jira-specific formatters for AI Tool Bridge.
+Jira-specific formatters.
 
 Uses Rich library for beautiful terminal output with tables, panels, and colors.
+Formatters are plugin-local (not imported from bridge).
 """
 
+import json
 import os
 from io import StringIO
 from pathlib import Path
 from typing import Any
 
-# Import base formatters from ai-tool-bridge
-from ai_tool_bridge.builtins.formatters import (
-    HumanFormatter, JsonFormatter, AIFormatter, MarkdownFormatter,
-)
-from ai_tool_bridge.formatters import formatter_registry
-
 # Rich imports
 from rich.console import Console
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Base Formatter Classes (plugin-local)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class Formatter:
+    """Base formatter with default implementations."""
+
+    def format(self, data: Any) -> str:
+        """Format data as string. Override in subclasses."""
+        return str(data)
+
+    def format_error(self, message: str, hint: str | None = None) -> str:
+        """Format error message."""
+        if hint:
+            return f"Error: {message}\nHint: {hint}"
+        return f"Error: {message}"
+
+
+class JsonFormatter(Formatter):
+    """JSON output formatter."""
+
+    def format(self, data: Any) -> str:
+        return json.dumps(data, indent=2, default=str)
+
+
+class HumanFormatter(Formatter):
+    """Human-readable output formatter."""
+
+    def format(self, data: Any) -> str:
+        if isinstance(data, dict):
+            return json.dumps(data, indent=2, default=str)
+        return str(data)
+
+
+class AIFormatter(Formatter):
+    """AI-optimized output formatter (compact, structured)."""
+
+    def format(self, data: Any) -> str:
+        return json.dumps(data, separators=(",", ":"), default=str)
+
+
+class MarkdownFormatter(Formatter):
+    """Markdown output formatter."""
+
+    def format(self, data: Any) -> str:
+        if isinstance(data, dict):
+            return f"```json\n{json.dumps(data, indent=2, default=str)}\n```"
+        return str(data)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Plugin-Local Formatter Registry
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class FormatterRegistry:
+    """Registry for plugin formatters."""
+
+    def __init__(self):
+        self._formatters: dict[str, Formatter] = {}
+
+    def register(self, plugin: str, data_type: str, format_name: str, formatter: Formatter):
+        """Register a formatter for plugin:data_type:format."""
+        key = f"{plugin}:{data_type}:{format_name}"
+        self._formatters[key] = formatter
+
+    def get(self, format_name: str, plugin: str | None = None, data_type: str | None = None) -> Formatter | None:
+        """Get formatter by format name, optionally filtered by plugin and data_type."""
+        if plugin and data_type:
+            key = f"{plugin}:{data_type}:{format_name}"
+            if key in self._formatters:
+                return self._formatters[key]
+        # Fallback: try without data_type
+        if plugin:
+            for key, fmt in self._formatters.items():
+                if key.startswith(f"{plugin}:") and key.endswith(f":{format_name}"):
+                    return fmt
+        return None
+
+
+# Global plugin-local registry
+formatter_registry = FormatterRegistry()
 from rich.table import Table
 from rich.panel import Panel
 from rich.text import Text

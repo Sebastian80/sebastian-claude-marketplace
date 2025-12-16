@@ -150,22 +150,3 @@ class JiraConnector:
             "base_url": self._base_url,
             "failure_count": self._failure_count,
         }
-
-    # HTTP method stubs - not used directly but required by protocol
-    # Routes use self.client.method() instead
-
-    async def get(self, path: str, **kwargs: Any) -> Any:
-        """HTTP GET - use client methods instead."""
-        raise NotImplementedError("Use connector.client methods directly")
-
-    async def post(self, path: str, **kwargs: Any) -> Any:
-        """HTTP POST - use client methods instead."""
-        raise NotImplementedError("Use connector.client methods directly")
-
-    async def put(self, path: str, **kwargs: Any) -> Any:
-        """HTTP PUT - use client methods instead."""
-        raise NotImplementedError("Use connector.client methods directly")
-
-    async def delete(self, path: str, **kwargs: Any) -> Any:
-        """HTTP DELETE - use client methods instead."""
-        raise NotImplementedError("Use connector.client methods directly")
