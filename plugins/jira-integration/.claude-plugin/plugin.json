@@ -1,5 +1,5 @@
 {
-  "name": "jira-integration",
+  "name": "jira",
   "version": "3.0.2",
   "description": "Comprehensive Jira integration with syntax validation, templates, and API operations",
   "author": {
