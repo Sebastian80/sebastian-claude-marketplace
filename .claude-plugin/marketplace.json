@@ -9,6 +9,13 @@
   },
   "plugins": [
     {
+      "name": "ai-tool-bridge",
+      "description": "Plugin-based daemon bridging AI agents to external services via unified HTTP API. Features auto-discovery, idle shutdown, and connector registry.",
+      "version": "1.0.0",
+      "source": "./plugins/ai-tool-bridge",
+      "category": "infrastructure"
+    },
+    {
       "name": "test-plugin",
       "description": "Example plugin demonstrating all component types (skills, agents, commands, hooks, MCP)",
       "version": "1.0.0",
@@ -30,10 +37,10 @@
       "category": "development"
     },
     {
-      "name": "jira-integration",
+      "name": "jira",
       "description": "Comprehensive Jira integration with syntax validation, templates, and API operations for Cloud and Server/Data Center",
       "version": "3.0.2",
-      "source": "./plugins/jira-integration",
+      "source": "./plugins/jira",
       "category": "productivity"
     },
     {
@@ -42,13 +49,6 @@
       "version": "1.0.0",
       "source": "./plugins/confluence-integration",
       "category": "productivity"
-    },
-    {
-      "name": "skills-daemon",
-      "description": "Central FastAPI daemon for Claude Code skills. Plugin architecture with auto-discovery, concurrent requests, API docs at /docs.",
-      "version": "1.0.0",
-      "source": "./plugins/skills-daemon",
-      "category": "infrastructure"
     }
   ]
 }

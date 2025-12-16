@@ -1,0 +1,9 @@
+{
+  "name": "ai-tool-bridge",
+  "version": "1.0.0",
+  "description": "Plugin-based daemon bridging AI agents to external services via unified HTTP API. Features auto-discovery, idle shutdown, and connector registry.",
+  "author": {
+    "name": "Sebastian"
+  },
+  "license": "MIT"
+}
