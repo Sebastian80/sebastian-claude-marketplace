@@ -1,0 +1,42 @@
+#!/bin/bash
+# AI Tool Bridge CLI wrapper with auto-setup
+# Automatically creates venv and installs package on first use
+
+set -e
+
+PLUGIN_DIR="$(dirname "$(dirname "$(realpath "$0")")")"
+VENV_DIR="$PLUGIN_DIR/.venv"
+BRIDGE_BIN="$VENV_DIR/bin/bridge"
+
+# Auto-setup: Create venv and install if needed
+setup_venv() {
+    echo "Setting up AI Tool Bridge..." >&2
+
+    # Create venv if it doesn't exist
+    if [[ ! -d "$VENV_DIR" ]]; then
+        echo "Creating Python virtual environment..." >&2
+        python3 -m venv "$VENV_DIR"
+    fi
+
+    # Install/upgrade package
+    echo "Installing ai-tool-bridge package..." >&2
+    "$VENV_DIR/bin/pip" install --quiet --upgrade pip
+    "$VENV_DIR/bin/pip" install --quiet -e "$PLUGIN_DIR"
+
+    echo "Setup complete." >&2
+}
+
+# Check if bridge is installed and working
+if [[ ! -x "$BRIDGE_BIN" ]]; then
+    setup_venv
+fi
+
+# Handle setup command explicitly
+if [[ "$1" == "setup" ]]; then
+    setup_venv
+    echo "AI Tool Bridge is ready."
+    exit 0
+fi
+
+# Execute bridge command
+exec "$BRIDGE_BIN" "$@"
