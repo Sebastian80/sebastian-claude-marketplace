@@ -85,22 +85,42 @@ def run_plugin_command(args: list[str]) -> int:
                 print_error("-X/--method requires a value (GET, POST, PUT, PATCH, DELETE)")
                 return 1
         elif arg.startswith("--"):
-            # Option: --key value or --flag
-            key = arg[2:]
-            if i + 1 < len(remaining) and not remaining[i + 1].startswith("-"):
-                params[key] = remaining[i + 1]
-                i += 2
-            else:
-                params[key] = "true"
+            # Option: --key=value, --key value, or --flag
+            arg_content = arg[2:]
+            if "=" in arg_content:
+                # Handle --key=value format
+                key, value = arg_content.split("=", 1)
+                params[key] = value
                 i += 1
-        elif arg.startswith("-") and len(arg) == 2:
-            # Short option: -k value
-            key = arg[1:]
-            if i + 1 < len(remaining) and not remaining[i + 1].startswith("-"):
-                params[key] = remaining[i + 1]
-                i += 2
             else:
-                params[key] = "true"
+                # Handle --key value or --flag format
+                key = arg_content
+                if i + 1 < len(remaining) and not remaining[i + 1].startswith("-"):
+                    params[key] = remaining[i + 1]
+                    i += 2
+                else:
+                    params[key] = "true"
+                    i += 1
+        elif arg.startswith("-") and not arg.startswith("--"):
+            # Short option: -k=value, -k value, or -k (flag)
+            arg_content = arg[1:]
+            if "=" in arg_content:
+                # Handle -k=value format
+                key, value = arg_content.split("=", 1)
+                params[key] = value
+                i += 1
+            elif len(arg_content) == 1:
+                # Handle -k value or -k (flag) format
+                key = arg_content
+                if i + 1 < len(remaining) and not remaining[i + 1].startswith("-"):
+                    params[key] = remaining[i + 1]
+                    i += 2
+                else:
+                    params[key] = "true"
+                    i += 1
+            else:
+                # Path segment that starts with - but isn't an option
+                path_parts.append(arg)
                 i += 1
         else:
             # Path segment
