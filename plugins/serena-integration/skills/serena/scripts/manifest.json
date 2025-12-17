@@ -6,5 +6,8 @@
   "dependencies": [
     "httpx>=0.25"
   ],
-  "bridge_version": ">=1.0.0"
+  "bridge_version": ">=1.0.0",
+  "cli": {
+    "command": "serena"
+  }
 }
