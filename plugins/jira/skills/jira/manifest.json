@@ -2,7 +2,7 @@
   "name": "jira",
   "version": "1.1.0",
   "description": "Jira issue tracking and workflow automation",
-  "entry_point": "skills_plugin:JiraPlugin",
+  "entry_point": "scripts:JiraPlugin",
   "python_path": [
     "."
   ],
