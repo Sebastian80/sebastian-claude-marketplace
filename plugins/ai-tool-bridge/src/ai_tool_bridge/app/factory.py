@@ -15,6 +15,7 @@ from ..config import BridgeConfig
 from ..connectors import connector_registry
 from ..lifecycle import IdleMonitor, SignalHandler, get_notifier, init_notifier
 from ..plugins import discover_plugins, install_cli, load_plugin, plugin_registry
+from ..reload import init_hot_reloader
 from .middleware import ActivityMiddleware, ErrorMiddleware, LoggingMiddleware
 from .routes import router as core_router
 
@@ -49,9 +50,17 @@ def create_app(
     # Discover and load plugins BEFORE creating app (so routes can be mounted)
     _load_plugins_sync(config, notifier)
 
+    # Hot reloader will be initialized after app is created
+    hot_reloader = None
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         """Manage application lifecycle."""
+        nonlocal hot_reloader
+        # Initialize hot reloader with app reference
+        hot_reloader = init_hot_reloader(app, config, check_interval=5.0)
+        app.state.hot_reloader = hot_reloader
+
         logger.info("bridge_starting", version="1.0.0")
 
         # Connect all connectors
@@ -77,6 +86,9 @@ def create_app(
         # Start idle monitoring
         await idle_monitor.start()
 
+        # Start hot reloader (watches for manifest changes)
+        await hot_reloader.start()
+
         logger.info(
             "bridge_started",
             plugins=len(plugin_registry),
@@ -91,6 +103,7 @@ def create_app(
         # Shutdown
         logger.info("bridge_stopping")
 
+        await hot_reloader.stop()
         await idle_monitor.stop()
         await plugin_registry.shutdown_all()
         await connector_registry.disconnect_all()

@@ -74,6 +74,14 @@ class BridgeClient:
         """Enable, disable, or test notifications."""
         return self._post(f"/notifications/{action}")
 
+    def reload_all(self) -> dict[str, Any]:
+        """Hot-reload all plugins."""
+        return self._post("/reload")
+
+    def reload_plugin(self, name: str) -> dict[str, Any]:
+        """Hot-reload a specific plugin."""
+        return self._post(f"/reload/{name}")
+
     def _get(self, path: str) -> Any:
         """Make GET request to daemon."""
         response = self._client.get(f"{self.base_url}{path}")

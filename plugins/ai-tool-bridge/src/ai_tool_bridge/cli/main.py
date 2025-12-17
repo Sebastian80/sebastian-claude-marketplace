@@ -29,7 +29,7 @@ AUTO_START_TIMEOUT = 5.0  # max seconds to wait for daemon
 AUTO_START_POLL_INTERVAL = 0.1  # seconds between health polls
 
 # Built-in commands (not plugin names)
-BUILTIN_COMMANDS = {"start", "stop", "restart", "status", "health", "plugins", "reconnect", "notify", "deps"}
+BUILTIN_COMMANDS = {"start", "stop", "restart", "status", "health", "plugins", "reconnect", "notify", "deps", "reload"}
 
 
 def main(args: list[str] | None = None) -> int:
@@ -417,6 +417,15 @@ def create_parser() -> argparse.ArgumentParser:
         help="Action: status (show deps), sync (install if changed), force (reinstall all)",
     )
 
+    # reload
+    reload_parser = subparsers.add_parser("reload", help="Hot-reload plugins")
+    reload_parser.add_argument(
+        "plugin",
+        nargs="?",
+        default=None,
+        help="Plugin name to reload (all plugins if not specified)",
+    )
+
     return parser
 
 
@@ -498,7 +507,48 @@ def run_command(command: str, args: argparse.Namespace, config: BridgeConfig) ->
                 print(f"Notifications: {result.get('status', 'unknown')}")
                 return 0
 
+        elif command == "reload":
+            return handle_reload_command(args.plugin, client)
+
     return 0
+
+
+def handle_reload_command(plugin: str | None, client: "BridgeClient") -> int:
+    """Handle the reload subcommand.
+
+    Args:
+        plugin: Plugin name to reload, or None for all
+        client: Bridge client
+
+    Returns:
+        Exit code
+    """
+    if plugin:
+        print(f"Reloading plugin: {plugin}...")
+        try:
+            result = client.reload_plugin(plugin)
+            print(f"Plugin '{plugin}' reloaded successfully.")
+            return 0
+        except Exception as e:
+            print_error(f"Failed to reload plugin: {e}")
+            return 1
+    else:
+        print("Reloading all plugins...")
+        try:
+            result = client.reload_all()
+            plugins = result.get("plugins", {})
+            for name, success in plugins.items():
+                status = "OK" if success else "FAILED"
+                print(f"  {name}: {status}")
+            failed = sum(1 for s in plugins.values() if not s)
+            if failed:
+                print_error(f"{failed} plugin(s) failed to reload.")
+                return 1
+            print("All plugins reloaded successfully.")
+            return 0
+        except Exception as e:
+            print_error(f"Failed to reload plugins: {e}")
+            return 1
 
 
 def handle_deps_command(action: str, config: BridgeConfig) -> int:

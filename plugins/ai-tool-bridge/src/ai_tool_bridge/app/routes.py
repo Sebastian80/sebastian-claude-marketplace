@@ -145,3 +145,50 @@ async def toggle_notifications(action: str) -> dict[str, Any]:
         return {"status": "sent" if success else "failed", "available": notifier.available}
     else:
         raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
+
+
+@router.post("/reload")
+async def reload_all_plugins() -> dict[str, Any]:
+    """Hot-reload all plugins.
+
+    Re-discovers plugins, syncs dependencies, and reloads changed plugins
+    without requiring a daemon restart.
+    """
+    from fastapi import HTTPException, Request
+
+    from ..reload import get_hot_reloader
+
+    reloader = get_hot_reloader()
+    if not reloader:
+        raise HTTPException(status_code=500, detail="Hot reloader not initialized")
+
+    results = await reloader.reload_all()
+    return {
+        "status": "reloaded",
+        "plugins": results,
+    }
+
+
+@router.post("/reload/{name}")
+async def reload_plugin(name: str) -> dict[str, Any]:
+    """Hot-reload a specific plugin.
+
+    Args:
+        name: Plugin name to reload
+    """
+    from fastapi import HTTPException
+
+    from ..reload import get_hot_reloader
+
+    reloader = get_hot_reloader()
+    if not reloader:
+        raise HTTPException(status_code=500, detail="Hot reloader not initialized")
+
+    success = await reloader.reload_plugin(name)
+    if not success:
+        raise HTTPException(status_code=500, detail=f"Failed to reload plugin '{name}'")
+
+    return {
+        "status": "reloaded",
+        "plugin": name,
+    }
