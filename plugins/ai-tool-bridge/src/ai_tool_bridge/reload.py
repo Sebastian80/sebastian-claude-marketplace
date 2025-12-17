@@ -9,6 +9,7 @@ Features:
 - Hot-reload individual plugins (unmount routes, reimport, remount)
 - Sync deps when dependencies change
 - Graceful handling of new/removed plugins
+- Watches Claude Code's installed_plugins.json for enable/disable changes
 """
 
 import asyncio
@@ -21,8 +22,9 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
-from .deps import sync_dependencies
-from .plugins.discovery import PluginManifest, discover_plugins
+from .deps import SyncResult, sync_dependencies
+from .events import get_event_bus
+from .plugins.discovery import INSTALLED_PLUGINS_PATH, SETTINGS_PATH, PluginManifest, discover_plugins
 from .plugins.loader import load_plugin
 from .plugins.registry import plugin_registry
 
@@ -84,6 +86,39 @@ class HotReloader:
         self._running = False
         self._task: asyncio.Task | None = None
         self._manifests: dict[str, PluginManifest] = {}  # name -> manifest
+        self._claude_state_hash: str | None = None  # Track Claude Code's plugin state
+
+    def _compute_claude_state_hash(self) -> str | None:
+        """Compute combined hash of Claude Code's plugin state files.
+
+        Tracks both installed_plugins.json and settings.json (enabledPlugins).
+        """
+        content_parts = []
+
+        # Include installed_plugins.json
+        if INSTALLED_PLUGINS_PATH.exists():
+            try:
+                content_parts.append(INSTALLED_PLUGINS_PATH.read_text())
+            except Exception:
+                pass
+
+        # Include settings.json (specifically enabledPlugins section)
+        if SETTINGS_PATH.exists():
+            try:
+                import json
+                with open(SETTINGS_PATH) as f:
+                    data = json.load(f)
+                # Only hash the enabledPlugins part for efficiency
+                enabled = data.get("enabledPlugins", {})
+                content_parts.append(json.dumps(enabled, sort_keys=True))
+            except Exception:
+                pass
+
+        if not content_parts:
+            return None
+
+        combined = "\n".join(content_parts)
+        return hashlib.sha256(combined.encode()).hexdigest()[:16]
 
     async def start(self) -> None:
         """Start the background watcher."""
@@ -92,6 +127,9 @@ class HotReloader:
 
         # Initial scan
         await self._scan_plugins()
+
+        # Track initial state of Claude Code's plugin config
+        self._claude_state_hash = self._compute_claude_state_hash()
 
         self._running = True
         self._task = asyncio.create_task(self._watch_loop())
@@ -130,18 +168,30 @@ class HotReloader:
 
     async def _check_for_changes(self) -> None:
         """Check for manifest changes and reload if needed."""
+        # First, check if Claude Code's plugin state changed (installed_plugins.json or settings.json)
+        new_state_hash = self._compute_claude_state_hash()
+        if new_state_hash != self._claude_state_hash:
+            logger.info(
+                "claude_plugin_state_changed",
+                old_hash=self._claude_state_hash,
+                new_hash=new_state_hash,
+            )
+            self._claude_state_hash = new_state_hash
+            # Claude Code's state changed - this affects which plugins are enabled
+
+        # Discover plugins (this now respects Claude Code's enabled state)
         current_manifests = {m.name: m for m in discover_plugins()}
         current_names = set(current_manifests.keys())
         tracked_names = self._tracker.get_tracked()
 
-        # Detect new plugins
+        # Detect new plugins (either newly added or newly enabled in Claude Code)
         new_plugins = current_names - tracked_names
         for name in new_plugins:
             manifest = current_manifests[name]
             logger.info("new_plugin_detected", name=name)
             await self._load_new_plugin(manifest)
 
-        # Detect removed plugins
+        # Detect removed plugins (either deleted or disabled in Claude Code)
         removed_plugins = tracked_names - current_names
         for name in removed_plugins:
             logger.info("plugin_removed_detected", name=name)
@@ -163,9 +213,10 @@ class HotReloader:
         self._manifests[manifest.name] = manifest
 
         # Sync deps if plugin has dependencies
+        deps_result = None
         if manifest.dependencies:
             logger.info("syncing_deps_for_new_plugin", name=manifest.name)
-            sync_dependencies(self._config)
+            deps_result = sync_dependencies(self._config)
 
         # Load plugin
         try:
@@ -182,6 +233,17 @@ class HotReloader:
             await plugin_registry.startup(manifest.name)
 
             logger.info("new_plugin_loaded", name=manifest.name)
+
+            # Emit event (notifier subscribes to this)
+            bus = get_event_bus()
+            await bus.emit(
+                "bridge",
+                "plugin.loaded",
+                {
+                    "name": manifest.name,
+                    "deps_installed": deps_result.installed if deps_result and deps_result.changed else [],
+                },
+            )
         except Exception as e:
             logger.error("new_plugin_load_failed", name=manifest.name, error=str(e))
 
@@ -200,16 +262,32 @@ class HotReloader:
         self._tracker.remove(name)
         self._manifests.pop(name, None)
 
+        # Sync deps to remove unused dependencies
+        logger.info("syncing_deps_after_plugin_removal", name=name)
+        result = sync_dependencies(self._config)
+
         logger.info("plugin_unloaded", name=name)
+
+        # Emit event (notifier subscribes to this)
+        bus = get_event_bus()
+        await bus.emit(
+            "bridge",
+            "plugin.unloaded",
+            {
+                "name": name,
+                "deps_removed": result.removed if result.changed else [],
+            },
+        )
 
     async def _reload_plugin(self, name: str, manifest: PluginManifest) -> None:
         """Reload a changed plugin."""
         old_manifest = self._manifests.get(name)
+        deps_result = None
 
         # Check if deps changed
         if old_manifest and old_manifest.dependencies != manifest.dependencies:
             logger.info("deps_changed_resyncing", name=name)
-            sync_dependencies(self._config)
+            deps_result = sync_dependencies(self._config)
 
         # Shutdown old plugin
         await plugin_registry.shutdown(name)
@@ -241,6 +319,18 @@ class HotReloader:
             self._manifests[name] = manifest
 
             logger.info("plugin_reloaded", name=name)
+
+            # Emit event (notifier subscribes to this)
+            bus = get_event_bus()
+            await bus.emit(
+                "bridge",
+                "plugin.reloaded",
+                {
+                    "name": name,
+                    "deps_installed": deps_result.installed if deps_result and deps_result.changed else [],
+                    "deps_removed": deps_result.removed if deps_result and deps_result.changed else [],
+                },
+            )
         except Exception as e:
             logger.error("plugin_reload_failed", name=name, error=str(e))
 
@@ -292,12 +382,11 @@ class HotReloader:
     def _get_bridge_context(self) -> dict[str, Any]:
         """Get bridge context for plugin instantiation."""
         from .connectors import connector_registry
-        from .lifecycle import get_notifier
 
         return {
             "config": self._config,
             "connector_registry": connector_registry,
-            "notifier": get_notifier(),
+            "event_bus": get_event_bus(),
         }
 
     async def reload_all(self) -> dict[str, bool]:

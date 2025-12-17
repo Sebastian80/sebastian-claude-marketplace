@@ -1,23 +1,25 @@
 """
-Dependency Management - UV-based automatic dependency installation.
+Dependency Management - UV-based automatic dependency sync.
 
-On daemon startup:
-1. Scans all plugin manifest.json files
-2. Aggregates dependencies
-3. Computes hash of all deps
-4. If hash changed since last install, runs `uv pip install`
-5. Saves new hash
+Uses UV pip commands:
+1. Aggregate deps from all plugin manifests
+2. Install new deps with `uv pip install`
+3. Uninstall removed deps with `uv pip uninstall`
 
-This ensures plugins can add dependencies and they're auto-installed.
+This ensures:
+- New plugin deps are installed
+- Removed plugin deps are uninstalled
+- Bridge package itself is never affected
 """
 
 import hashlib
-import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+from textwrap import dedent
 
 import structlog
 
@@ -26,31 +28,24 @@ from .plugins.discovery import discover_plugins
 
 logger = structlog.get_logger(__name__)
 
+# Core bridge dependencies (always required)
+BRIDGE_CORE_DEPS = [
+    "fastapi>=0.109",
+    "uvicorn>=0.27",
+    "httpx>=0.25",
+    "structlog>=24.0",
+]
+
 
 def compute_deps_hash(deps: list[str]) -> str:
-    """Compute deterministic hash of dependencies.
-
-    Args:
-        deps: List of dependency strings (e.g., ["httpx>=0.25", "rich>=13.0"])
-
-    Returns:
-        SHA256 hash of sorted, normalized dependencies
-    """
-    # Sort and normalize for deterministic hash
+    """Compute deterministic hash of dependencies."""
     normalized = sorted(set(d.strip().lower() for d in deps if d.strip()))
     content = "\n".join(normalized)
     return hashlib.sha256(content.encode()).hexdigest()[:16]
 
 
 def get_stored_hash(config: BridgeConfig) -> str | None:
-    """Read stored dependency hash.
-
-    Args:
-        config: Bridge configuration
-
-    Returns:
-        Stored hash string or None if not found
-    """
+    """Read stored dependency hash."""
     hash_file = config.state_dir / "deps.hash"
     if hash_file.exists():
         return hash_file.read_text().strip()
@@ -58,33 +53,16 @@ def get_stored_hash(config: BridgeConfig) -> str | None:
 
 
 def save_hash(config: BridgeConfig, hash_value: str) -> None:
-    """Save dependency hash.
-
-    Args:
-        config: Bridge configuration
-        hash_value: Hash to save
-    """
+    """Save dependency hash."""
     hash_file = config.state_dir / "deps.hash"
     hash_file.write_text(hash_value)
     logger.debug("deps_hash_saved", hash=hash_value)
 
 
 def aggregate_dependencies(config: BridgeConfig) -> list[str]:
-    """Aggregate dependencies from all plugin manifests.
+    """Aggregate dependencies from all plugin manifests."""
+    all_deps = set(BRIDGE_CORE_DEPS)
 
-    Args:
-        config: Bridge configuration
-
-    Returns:
-        Combined list of all plugin dependencies
-    """
-    all_deps = set()
-
-    # Get bridge's own dependencies
-    bridge_deps = _get_bridge_deps()
-    all_deps.update(bridge_deps)
-
-    # Get dependencies from all discovered plugins
     manifests = discover_plugins()
     for manifest in manifests:
         if manifest.dependencies:
@@ -98,37 +76,18 @@ def aggregate_dependencies(config: BridgeConfig) -> list[str]:
     return sorted(all_deps)
 
 
-def _get_bridge_deps() -> list[str]:
-    """Get the bridge's own core dependencies.
-
-    These are the deps needed by ai-tool-bridge itself,
-    not from plugins.
-    """
-    # Core deps that bridge always needs
-    return [
-        "fastapi>=0.109",
-        "uvicorn>=0.27",
-        "httpx>=0.25",
-        "structlog>=24.0",
-    ]
-
-
 def find_uv() -> str | None:
-    """Find UV executable.
-
-    Returns:
-        Path to uv or None if not found
-    """
+    """Find UV executable."""
     return shutil.which("uv")
 
 
-def get_current_venv() -> Path | None:
-    """Get the currently active virtual environment.
+def get_target_venv() -> Path:
+    """Get the virtual environment to sync.
 
-    Returns:
-        Path to current venv or None if not in a venv
+    Uses current venv if running inside one, otherwise returns None
+    to let UV create one in the project directory.
     """
-    # Check VIRTUAL_ENV env var first
+    # Check VIRTUAL_ENV env var
     venv = os.environ.get("VIRTUAL_ENV")
     if venv:
         return Path(venv)
@@ -140,79 +99,104 @@ def get_current_venv() -> Path | None:
     return None
 
 
-def ensure_venv(config: BridgeConfig) -> Path:
-    """Ensure virtual environment exists.
-
-    Uses the current venv if running inside one, otherwise creates
-    a shared venv at config.venv_dir.
+def generate_pyproject(config: BridgeConfig, deps: list[str]) -> Path:
+    """Generate pyproject.toml with aggregated dependencies.
 
     Args:
         config: Bridge configuration
+        deps: List of dependency strings
 
     Returns:
-        Path to venv directory
-
-    Raises:
-        RuntimeError: If UV not found or venv creation fails
+        Path to generated pyproject.toml
     """
-    # Prefer current venv if we're in one
-    current_venv = get_current_venv()
-    if current_venv and (current_venv / "bin" / "python").exists():
-        logger.debug("using_current_venv", path=str(current_venv))
-        return current_venv
+    # Format deps for TOML
+    deps_toml = ",\n    ".join(f'"{dep}"' for dep in deps)
 
-    # Fall back to shared venv
-    venv_dir = config.venv_dir
+    # Get Python version
+    py_version = f"{sys.version_info.major}.{sys.version_info.minor}"
 
-    if (venv_dir / "bin" / "python").exists():
-        return venv_dir
+    content = dedent(f'''\
+        # Auto-generated by AI Tool Bridge
+        # DO NOT EDIT - regenerated from plugin manifests
 
-    uv = find_uv()
-    if not uv:
-        raise RuntimeError(
-            "UV not found. Install with: curl -LsSf https://astral.sh/uv/install.sh | sh"
-        )
+        [project]
+        name = "ai-tool-bridge-env"
+        version = "1.0.0"
+        description = "Aggregated dependencies for AI Tool Bridge plugins"
+        requires-python = ">={py_version}"
+        dependencies = [
+            {deps_toml}
+        ]
 
-    logger.info("creating_venv", path=str(venv_dir))
+        [tool.uv]
+        # Use system Python, don't download
+        python-preference = "system"
+    ''')
 
-    result = subprocess.run(
-        [uv, "venv", str(venv_dir), "--python", f"python{sys.version_info.major}.{sys.version_info.minor}"],
-        capture_output=True,
-        text=True,
-    )
+    pyproject_path = config.runtime_dir / "pyproject.toml"
+    pyproject_path.write_text(content)
 
-    if result.returncode != 0:
-        raise RuntimeError(f"Failed to create venv: {result.stderr}")
-
-    return venv_dir
+    logger.debug("pyproject_generated", path=str(pyproject_path), deps_count=len(deps))
+    return pyproject_path
 
 
-def install_deps(config: BridgeConfig, deps: list[str]) -> bool:
-    """Install dependencies using UV.
+def get_installed_plugin_deps(config: BridgeConfig) -> set[str]:
+    """Get the set of currently tracked plugin dependencies.
+
+    Reads from the stored deps list to know what we previously installed.
+    """
+    deps_file = config.state_dir / "deps.list"
+    if deps_file.exists():
+        return set(deps_file.read_text().strip().split("\n"))
+    return set()
+
+
+def save_installed_deps(config: BridgeConfig, deps: list[str]) -> None:
+    """Save the list of installed plugin dependencies."""
+    deps_file = config.state_dir / "deps.list"
+    deps_file.write_text("\n".join(sorted(deps)))
+
+
+def normalize_dep_name(dep: str) -> str:
+    """Extract package name from dependency spec (e.g., 'foo>=1.0' -> 'foo')."""
+    # Handle various specifiers: >=, <=, ==, ~=, !=, >, <, [extras]
+    match = re.match(r"^([a-zA-Z0-9_-]+)", dep)
+    return match.group(1).lower().replace("-", "_") if match else dep.lower()
+
+
+def run_uv_install(config: BridgeConfig, deps: list[str], force_reinstall: bool = False) -> bool:
+    """Install dependencies using uv pip install.
+
+    Uses uv pip install to add deps without removing existing packages
+    (like the bridge itself).
 
     Args:
         config: Bridge configuration
-        deps: List of dependencies to install
+        deps: List of dependency specs to install
+        force_reinstall: If True, reinstall packages
 
     Returns:
-        True if installation succeeded
+        True if install succeeded
     """
     uv = find_uv()
     if not uv:
         logger.error("uv_not_found")
         return False
 
-    venv_dir = ensure_venv(config)
-
-    logger.info("installing_deps", count=len(deps))
+    target_venv = get_target_venv()
+    if not target_venv:
+        logger.error("no_venv_found")
+        return False
 
     # Build install command
-    cmd = [
-        uv, "pip", "install",
-        "--python", str(venv_dir / "bin" / "python"),
-        *deps,
-    ]
+    cmd = [uv, "pip", "install", "--python", str(target_venv / "bin" / "python")]
 
+    if force_reinstall:
+        cmd.append("--reinstall")
+
+    cmd.extend(deps)
+
+    logger.info("installing_deps", count=len(deps))
     result = subprocess.run(
         cmd,
         capture_output=True,
@@ -220,33 +204,91 @@ def install_deps(config: BridgeConfig, deps: list[str]) -> bool:
     )
 
     if result.returncode != 0:
-        logger.error("deps_install_failed", stderr=result.stderr)
+        logger.error("uv_install_failed", stderr=result.stderr)
         return False
 
     logger.info("deps_installed", count=len(deps))
     return True
 
 
-def sync_dependencies(config: BridgeConfig, force: bool = False) -> bool:
-    """Sync dependencies if they've changed.
-
-    Main entry point for dependency management.
-    Called before daemon startup.
+def run_uv_uninstall(config: BridgeConfig, packages: list[str]) -> bool:
+    """Uninstall packages using uv pip uninstall.
 
     Args:
         config: Bridge configuration
-        force: Force reinstall even if hash matches
+        packages: List of package names to uninstall
 
     Returns:
-        True if deps are in sync (either unchanged or successfully updated)
+        True if uninstall succeeded
+    """
+    if not packages:
+        return True
+
+    uv = find_uv()
+    if not uv:
+        logger.error("uv_not_found")
+        return False
+
+    target_venv = get_target_venv()
+    if not target_venv:
+        logger.error("no_venv_found")
+        return False
+
+    # Build uninstall command
+    cmd = [uv, "pip", "uninstall", "--python", str(target_venv / "bin" / "python")]
+    cmd.extend(packages)
+
+    logger.info("uninstalling_deps", packages=packages)
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode != 0:
+        # Uninstall failures are often due to packages not being installed - log but don't fail
+        logger.warning("uv_uninstall_warning", stderr=result.stderr)
+
+    logger.info("deps_uninstalled", packages=packages)
+    return True
+
+
+class SyncResult:
+    """Result of dependency sync operation."""
+
+    def __init__(
+        self,
+        success: bool = True,
+        changed: bool = False,
+        installed: list[str] | None = None,
+        removed: list[str] | None = None,
+    ):
+        self.success = success
+        self.changed = changed
+        self.installed = installed or []
+        self.removed = removed or []
+
+    def __bool__(self) -> bool:
+        return self.success
+
+
+def sync_dependencies(config: BridgeConfig, force: bool = False) -> SyncResult:
+    """Sync dependencies if they've changed.
+
+    Main entry point for dependency management. Installs new deps and
+    removes deps that are no longer needed by any plugin.
+
+    Args:
+        config: Bridge configuration
+        force: Force resync even if hash matches
+
+    Returns:
+        SyncResult with success status and change info
     """
     config.ensure_dirs()
 
-    # Aggregate all deps
+    # Aggregate all deps from current plugins
     deps = aggregate_dependencies(config)
-    if not deps:
-        logger.debug("no_deps_to_sync")
-        return True
 
     # Compute hash
     current_hash = compute_deps_hash(deps)
@@ -262,43 +304,61 @@ def sync_dependencies(config: BridgeConfig, force: bool = False) -> bool:
     # Check if update needed
     if not force and current_hash == stored_hash:
         logger.debug("deps_unchanged")
-        return True
+        return SyncResult(success=True, changed=False)
 
-    # Install deps
+    # Get previously installed deps
+    old_deps = get_installed_plugin_deps(config)
+    new_dep_names = {normalize_dep_name(d) for d in deps}
+    old_dep_names = {normalize_dep_name(d) for d in old_deps}
+
+    # Compute what changed
+    to_install = deps  # Always install all (uv handles already-installed efficiently)
+    to_remove = old_dep_names - new_dep_names - {normalize_dep_name(d) for d in BRIDGE_CORE_DEPS}
+    newly_installed = list(new_dep_names - old_dep_names)
+    removed_list = list(to_remove)
+
+    # Log what changed
     if current_hash != stored_hash:
         logger.info(
             "deps_changed",
             old_hash=stored_hash,
             new_hash=current_hash,
-            deps=deps,
+            to_install=newly_installed,
+            to_remove=removed_list,
         )
 
-    if not install_deps(config, deps):
-        return False
+    # Generate pyproject.toml for documentation
+    generate_pyproject(config, deps)
 
-    # Save new hash
+    # Install deps
+    if deps and not run_uv_install(config, deps, force_reinstall=force):
+        return SyncResult(success=False)
+
+    # Uninstall removed deps (only plugin-specific ones, not core deps)
+    if to_remove:
+        run_uv_uninstall(config, removed_list)
+
+    # Save state
     save_hash(config, current_hash)
-    return True
+    save_installed_deps(config, deps)
+    return SyncResult(
+        success=True,
+        changed=True,
+        installed=newly_installed,
+        removed=removed_list,
+    )
 
 
 def show_deps_status(config: BridgeConfig) -> dict:
-    """Get current dependency status.
-
-    Returns:
-        Status dict with deps, hash, and sync state
-    """
+    """Get current dependency status."""
     deps = aggregate_dependencies(config)
     current_hash = compute_deps_hash(deps)
     stored_hash = get_stored_hash(config)
 
-    # Check which venv would be used
-    current_venv = get_current_venv()
-    if current_venv:
-        venv_path = current_venv
-        venv_exists = (current_venv / "bin" / "python").exists()
-    else:
-        venv_path = config.venv_dir
-        venv_exists = (config.venv_dir / "bin" / "python").exists()
+    target_venv = get_target_venv()
+    pyproject_exists = (config.runtime_dir / "pyproject.toml").exists()
+    lockfile_exists = (config.runtime_dir / "uv.lock").exists()
+    venv_exists = target_venv.exists() if target_venv else False
 
     return {
         "dependencies": deps,
@@ -306,6 +366,9 @@ def show_deps_status(config: BridgeConfig) -> dict:
         "stored_hash": stored_hash,
         "in_sync": current_hash == stored_hash,
         "uv_available": find_uv() is not None,
+        "venv_path": str(target_venv) if target_venv else None,
         "venv_exists": venv_exists,
-        "venv_path": str(venv_path),
+        "pyproject_exists": pyproject_exists,
+        "lockfile_exists": lockfile_exists,
+        "runtime_dir": str(config.runtime_dir),
     }

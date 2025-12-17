@@ -3,6 +3,9 @@ Plugin Discovery - Find plugins in standard locations.
 
 Scans plugin directories for valid plugin packages.
 A valid plugin has a manifest.json with required fields.
+
+Integrates with Claude Code's installed_plugins.json to respect
+enabled/disabled state from /plugin command.
 """
 
 import json
@@ -18,6 +21,148 @@ DEFAULT_PLUGIN_PATHS = [
     Path.home() / ".claude" / "plugins" / "marketplaces",
     Path.home() / ".claude" / "plugins" / "local",
 ]
+
+# Claude Code's plugin registry files
+INSTALLED_PLUGINS_PATH = Path.home() / ".claude" / "plugins" / "installed_plugins.json"
+SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
+
+
+def get_installed_plugins() -> set[str]:
+    """Read Claude Code's plugin state and return enabled plugin identifiers.
+
+    Uses settings.json -> enabledPlugins as the authoritative source.
+    A plugin is only considered enabled if:
+    - It exists in enabledPlugins AND its value is True, OR
+    - It exists in installed_plugins.json AND is not explicitly disabled in enabledPlugins
+
+    Returns:
+        Set of enabled plugin identifiers in format "name@marketplace"
+    """
+    installed = set()
+    enabled_state = {}  # plugin_id -> True/False
+
+    # Get list of installed plugins
+    if INSTALLED_PLUGINS_PATH.exists():
+        try:
+            with open(INSTALLED_PLUGINS_PATH) as f:
+                data = json.load(f)
+            installed.update(data.get("plugins", {}).keys())
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.warning("installed_plugins_parse_error", error=str(e))
+
+    # Get enabled state from settings.json (authoritative for enable/disable)
+    if SETTINGS_PATH.exists():
+        try:
+            with open(SETTINGS_PATH) as f:
+                data = json.load(f)
+            enabled_state = data.get("enabledPlugins", {})
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.warning("settings_parse_error", error=str(e))
+
+    # Build final set: plugin is enabled if:
+    # - Explicitly enabled in settings.json (enabledPlugins[id] = true)
+    # - OR installed but not mentioned in enabledPlugins (default to enabled)
+    # A plugin is disabled if enabledPlugins[id] = false
+    result = set()
+
+    # Add plugins explicitly enabled in settings
+    for plugin_id, is_enabled in enabled_state.items():
+        if is_enabled:
+            result.add(plugin_id)
+
+    # Add installed plugins not explicitly disabled
+    for plugin_id in installed:
+        if plugin_id not in enabled_state:
+            # Not mentioned in enabledPlugins, default to enabled
+            result.add(plugin_id)
+        # If it's in enabled_state, we already handled it above
+
+    logger.debug("installed_plugins_loaded", count=len(result), plugins=list(result))
+    return result
+
+
+def extract_marketplace_from_path(manifest_path: Path) -> str | None:
+    """Extract marketplace name from manifest path.
+
+    Example:
+        Path: ~/.claude/plugins/marketplaces/sebastian-marketplace/plugins/jira/skills/jira/manifest.json
+        Returns: "sebastian-marketplace"
+
+        Path: ~/.claude/plugins/local/my-plugin/manifest.json
+        Returns: "local"
+    """
+    parts = manifest_path.parts
+
+    # Look for "marketplaces" in path
+    if "marketplaces" in parts:
+        idx = parts.index("marketplaces")
+        if idx + 1 < len(parts):
+            return parts[idx + 1]
+
+    # Local plugins
+    if "local" in parts:
+        return "local"
+
+    return None
+
+
+def is_plugin_enabled(plugin_name: str, manifest_path: Path, installed_plugins: set[str]) -> bool:
+    """Check if a plugin is enabled in Claude Code.
+
+    Args:
+        plugin_name: Name from manifest
+        manifest_path: Path to manifest.json
+        installed_plugins: Set of enabled plugin identifiers
+
+    Returns:
+        True if plugin is enabled or if we can't determine (fail-open)
+    """
+    # If no installed_plugins.json, fail-open (allow all)
+    if not installed_plugins:
+        return True
+
+    marketplace = extract_marketplace_from_path(manifest_path)
+    if not marketplace:
+        # Can't determine marketplace, fail-open
+        return True
+
+    # Build the identifier Claude Code uses
+    plugin_id = f"{plugin_name}@{marketplace}"
+
+    # Direct match
+    if plugin_id in installed_plugins:
+        return True
+
+    # Check if it's a skill within an installed plugin
+    # Path pattern: .../marketplaces/MARKETPLACE/plugins/PARENT/skills/SKILL/manifest.json
+    # We need to find the parent plugin name which comes after "plugins" but before "skills"
+    path_str = str(manifest_path)
+    if "/skills/" in path_str:
+        # Extract parent plugin from path
+        # Example: .../plugins/jira/skills/jira/manifest.json -> parent is "jira"
+        # Example: .../plugins/serena-integration/skills/serena/manifest.json -> parent is "serena-integration"
+        parts = path_str.split("/")
+        try:
+            skills_idx = parts.index("skills")
+            # The parent plugin is the directory before "skills"
+            # But we need to find the right "plugins" - the one in the marketplace structure
+            # Look backwards from skills_idx to find "plugins"
+            for i in range(skills_idx - 1, -1, -1):
+                if parts[i] == "plugins" and i + 1 < skills_idx:
+                    parent_plugin = parts[i + 1]
+                    parent_id = f"{parent_plugin}@{marketplace}"
+                    if parent_id in installed_plugins:
+                        logger.debug(
+                            "plugin_enabled_via_parent",
+                            name=plugin_name,
+                            parent=parent_plugin,
+                        )
+                        return True
+                    break
+        except (ValueError, IndexError):
+            pass
+
+    return False
 
 
 class PluginManifest:
@@ -84,12 +229,14 @@ class PluginManifest:
 def discover_plugins(
     paths: list[Path] | None = None,
     recursive: bool = True,
+    respect_claude_state: bool = True,
 ) -> list[PluginManifest]:
     """Discover all plugins in given paths.
 
     Args:
         paths: Directories to scan (defaults to DEFAULT_PLUGIN_PATHS)
         recursive: Whether to scan subdirectories
+        respect_claude_state: If True, filter by Claude Code's installed_plugins.json
 
     Returns:
         List of discovered plugin manifests
@@ -97,7 +244,11 @@ def discover_plugins(
     if paths is None:
         paths = DEFAULT_PLUGIN_PATHS
 
+    # Load Claude Code's installed plugins if we're respecting state
+    installed_plugins = get_installed_plugins() if respect_claude_state else set()
+
     manifests = []
+    skipped = []
 
     for base_path in paths:
         if not base_path.exists():
@@ -109,6 +260,18 @@ def discover_plugins(
         for manifest_path in base_path.glob(pattern):
             try:
                 manifest = PluginManifest.from_file(manifest_path)
+
+                # Check if plugin is enabled in Claude Code
+                if respect_claude_state and installed_plugins:
+                    if not is_plugin_enabled(manifest.name, manifest_path, installed_plugins):
+                        skipped.append(manifest.name)
+                        logger.debug(
+                            "plugin_disabled_in_claude",
+                            name=manifest.name,
+                            path=str(manifest.path),
+                        )
+                        continue
+
                 manifests.append(manifest)
                 logger.debug(
                     "plugin_discovered",
@@ -134,6 +297,9 @@ def discover_plugins(
                     path=str(manifest_path),
                     error=str(e),
                 )
+
+    if skipped:
+        logger.info("plugins_skipped_disabled", count=len(skipped), plugins=skipped)
 
     logger.info("plugin_discovery_complete", count=len(manifests))
     return manifests

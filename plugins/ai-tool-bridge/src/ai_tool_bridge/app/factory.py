@@ -13,7 +13,8 @@ from fastapi import FastAPI
 
 from ..config import BridgeConfig
 from ..connectors import connector_registry
-from ..lifecycle import IdleMonitor, SignalHandler, get_notifier, init_notifier
+from ..events import get_event_bus, init_event_bus
+from ..lifecycle import IdleMonitor, SignalHandler, init_notifier
 from ..plugins import discover_plugins, install_cli, load_plugin, plugin_registry
 from ..reload import init_hot_reloader
 from .middleware import ActivityMiddleware, ErrorMiddleware, LoggingMiddleware
@@ -38,17 +39,21 @@ def create_app(
     if config is None:
         config = BridgeConfig()
 
+    # Initialize event bus (central message broker)
+    bus = init_event_bus()
+
+    # Initialize notifier and subscribe to events
+    notifier = init_notifier(enabled=config.notifications_enabled)
+    notifier.subscribe(bus)
+
     # Create idle monitor
     idle_monitor = IdleMonitor(
         timeout_seconds=config.idle_timeout,
         on_idle=signal_handler.trigger_shutdown if signal_handler else None,
     )
 
-    # Initialize notifier
-    notifier = init_notifier(enabled=config.notifications_enabled)
-
     # Discover and load plugins BEFORE creating app (so routes can be mounted)
-    _load_plugins_sync(config, notifier)
+    _load_plugins_sync(config, bus)
 
     # Hot reloader will be initialized after app is created
     hot_reloader = None
@@ -66,22 +71,27 @@ def create_app(
         # Connect all connectors
         connector_results = await connector_registry.connect_all()
 
-        # Send notifications for connector results
-        # Notify only on connection failures (silent success)
+        # Emit error events for connector failures
         for name, error in connector_results.items():
             if error is not None:
-                notifier.connector_connection_failed(name, str(error))
+                await bus.emit("bridge", "error", {
+                    "source": name,
+                    "message": f"Connection failed: {error}",
+                })
 
         # Start all plugins (async startup)
         plugin_results = await plugin_registry.startup_all()
 
-        # Notify only on plugin failures (silent success)
+        # Emit error events for plugin failures
         started_plugins = []
         for name, success in plugin_results.items():
             if success:
                 started_plugins.append(name)
             else:
-                notifier.plugin_start_failed(name, "Startup failed")
+                await bus.emit("bridge", "error", {
+                    "source": name,
+                    "message": "Plugin startup failed",
+                })
 
         # Start idle monitoring
         await idle_monitor.start()
@@ -95,8 +105,8 @@ def create_app(
             connectors=len(connector_registry._connectors),
         )
 
-        # Single notification with plugin names
-        notifier.daemon_started(started_plugins)
+        # Emit daemon started event
+        await bus.emit("bridge", "daemon.started", {"plugins": started_plugins})
 
         yield
 
@@ -108,8 +118,8 @@ def create_app(
         await plugin_registry.shutdown_all()
         await connector_registry.disconnect_all()
 
-        # Send daemon stopped notification
-        notifier.daemon_stopped()
+        # Emit daemon stopped event
+        await bus.emit("bridge", "daemon.stopped", {})
 
         logger.info("bridge_stopped")
 
@@ -137,6 +147,7 @@ def create_app(
     # Store config and components on app state
     app.state.config = config
     app.state.idle_monitor = idle_monitor
+    app.state.event_bus = bus
     app.state.notifier = notifier
 
     return app
@@ -187,21 +198,21 @@ def _install_plugin_dependencies(manifest: Any) -> bool:
         return False
 
 
-def _load_plugins_sync(config: BridgeConfig, notifier: Any) -> None:
+def _load_plugins_sync(config: BridgeConfig, bus: Any) -> None:
     """Discover and load all plugins synchronously.
 
     Called during app creation so routes can be mounted.
 
     Args:
         config: Bridge configuration
-        notifier: Notification service for plugins
+        bus: Event bus for plugin communication
     """
     manifests = discover_plugins()
 
     bridge_context: dict[str, Any] = {
         "config": config,
         "connector_registry": connector_registry,
-        "notifier": notifier,
+        "event_bus": bus,
     }
 
     for manifest in manifests:
