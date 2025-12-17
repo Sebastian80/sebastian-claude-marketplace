@@ -21,19 +21,21 @@ This documentation uses precise terminology to avoid confusion:
 
 | Term | Meaning | Example |
 |------|---------|---------|
-| **Plugin** | Claude Code marketplace package with skills, commands, agents | `serena-integration`, `skills-daemon` |
-| **Backend** | FastAPI router exposing HTTP endpoints for CLI tools | `SerenaBackend` in `skills_plugin/` |
+| **Plugin** | Claude Code marketplace package with skills, commands, agents | `serena-integration`, `jira` |
+| **Bridge Plugin** | FastAPI router exposing HTTP endpoints for CLI tools | `scripts/plugin.py` |
 | **Skill** | Markdown file with instructions Claude follows | `serena/SKILL.md` |
-| **CLI** | Command-line wrapper calling the Skills Daemon | `serena`, `jira` |
+| **CLI** | Command-line wrapper calling the AI Tool Bridge | `serena`, `jira` |
 
 **Architecture:**
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ Claude Code Plugin (marketplace package)                                    │
-│   ├── skills/           → Instructions for Claude                           │
-│   ├── commands/         → Slash commands (/onboard)                         │
-│   ├── agents/           → Subagent definitions                              │
-│   └── skills_plugin/    → Backend (FastAPI router for CLI)                  │
+│   ├── skills/skill-name/                                                    │
+│   │   ├── manifest.json  → Bridge plugin config (entry_point: scripts:X)    │
+│   │   ├── SKILL.md       → Instructions for Claude                          │
+│   │   └── scripts/       → Bridge plugin code (FastAPI router)              │
+│   ├── commands/          → Slash commands (/onboard)                        │
+│   └── agents/            → Subagent definitions                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -98,40 +100,35 @@ This documentation uses precise terminology to avoid confusion:
 
 ## Creating a Plugin with CLI Backend
 
-This guide shows how to create a plugin that exposes CLI endpoints through the Skills Daemon.
+This guide shows how to create a plugin that exposes CLI endpoints through the AI Tool Bridge.
 
 ### Architecture Overview
 
 ```
 ~/.local/bin/mytool                    # CLI wrapper (bash)
         ↓ calls
-skills-client mytool <command>          # Thin HTTP client
+bridge mytool <command>                 # Bridge CLI router
         ↓ HTTP :9100
-Skills Daemon (FastAPI)                 # Central daemon
+AI Tool Bridge (FastAPI)                # Central daemon
         ↓ routes to
-MyToolBackend                           # Your backend (FastAPI router)
+MyToolPlugin                            # Your plugin (FastAPI router)
         ↓ calls
 External Service                        # Your backend service (API, MCP, etc.)
 ```
 
 ### Step 1: Create Plugin Structure
 
-```bash
-./scripts/new-plugin.sh my-tool
-```
-
-Or manually create:
-
 ```
 plugins/my-tool-integration/
-├── .claude-plugin/
-│   └── plugin.json              # Plugin metadata
 ├── skills/
 │   └── my-tool/
+│       ├── manifest.json        # Bridge plugin config
 │       ├── SKILL.md             # Instructions for Claude
-│       └── scripts/
-│           └── skills_plugin/   # Backend (FastAPI router)
-│               └── __init__.py
+│       └── scripts/             # Bridge plugin code
+│           ├── __init__.py      # Exports MyToolPlugin
+│           ├── plugin.py        # Plugin class
+│           ├── connector.py     # API connector
+│           └── routes/          # FastAPI routes
 ├── commands/                    # Slash commands (optional)
 ├── agents/                      # Subagents (optional)
 ├── bin/                         # CLI wrapper
@@ -152,11 +149,31 @@ plugins/my-tool-integration/
 }
 ```
 
-### Step 3: Create the Backend
+### Step 3: Create the Bridge Plugin
 
-The backend is a FastAPI router that handles HTTP requests from the CLI.
+The bridge plugin is a FastAPI router that handles HTTP requests from the CLI.
 
-**`skills/my-tool/scripts/skills_plugin/__init__.py`**:
+**`skills/my-tool/manifest.json`**:
+```json
+{
+  "name": "my-tool",
+  "version": "1.0.0",
+  "description": "My Tool integration",
+  "entry_point": "scripts:MyToolPlugin",
+  "dependencies": [],
+  "cli": {
+    "command": "mytool"
+  }
+}
+```
+
+**`skills/my-tool/scripts/__init__.py`**:
+```python
+from .plugin import MyToolPlugin
+__all__ = ["MyToolPlugin"]
+```
+
+**`skills/my-tool/scripts/plugin.py`**:
 
 ```python
 """
@@ -390,15 +407,14 @@ The CLI client formats these automatically for terminal display.
 | Write data | POST | Params: `content`, `code`, `new_name` |
 | Specific commands | POST | Commands: `create`, `write`, `delete`, `rename` |
 
-### Backend Discovery
+### Plugin Discovery
 
-The daemon auto-discovers backends from:
+The AI Tool Bridge auto-discovers plugins from:
 
-1. `SKILLS_DAEMON_PLUGINS` env var (colon-separated paths)
-2. `~/.config/skills-daemon/plugins.conf` (one path per line)
-3. Convention: `~/.claude/plugins/**/skills_plugin/`
+1. `~/.claude/plugins/marketplaces/**/manifest.json`
+2. `~/.claude/plugins/local/**/manifest.json`
 
-Your `skills_plugin/__init__.py` must define a class inheriting from `SkillPlugin`.
+Your `manifest.json` must define `entry_point: "scripts:YourPlugin"` pointing to a class implementing `PluginProtocol`.
 
 ---
 
@@ -407,35 +423,31 @@ Your `skills_plugin/__init__.py` must define a class inheriting from `SkillPlugi
 ```
 sebastian-marketplace/
 ├── plugins/
+│   ├── ai-tool-bridge/              # Central daemon
+│   │   ├── src/ai_tool_bridge/      # FastAPI app
+│   │   └── bin/bridge               # CLI
+│   │
 │   ├── serena-integration/
 │   │   ├── skills/serena/
+│   │   │   ├── manifest.json        # entry_point: scripts:SerenaPlugin
 │   │   │   ├── SKILL.md
-│   │   │   └── scripts/skills_plugin/    # SerenaBackend
+│   │   │   └── scripts/             # Bridge plugin code
 │   │   ├── commands/
 │   │   ├── agents/
 │   │   └── bin/serena
 │   │
-│   ├── skills-daemon/
-│   │   ├── skills_daemon/
-│   │   │   ├── main.py          # FastAPI app
-│   │   │   ├── lifecycle.py     # Auto-start/stop
-│   │   │   └── plugins/         # SkillPlugin base class
-│   │   └── cli/
-│   │       └── skills_client.py # Thin HTTP client
-│   │
-│   ├── jira-integration/
-│   │   ├── skills/
-│   │   │   ├── jira-communication/
-│   │   │   └── jira-syntax/
-│   │   └── scripts/             # Python CLI (direct, no daemon)
+│   ├── jira/
+│   │   ├── skills/jira/
+│   │   │   ├── manifest.json        # entry_point: scripts:JiraPlugin
+│   │   │   ├── SKILL.md
+│   │   │   └── scripts/             # Bridge plugin code
+│   │   └── skills/jira-syntax/
 │   │
 │   └── jetbrains-integration/
 │       ├── skills/
 │       ├── bin/
-│       └── scripts/             # MCP clients
+│       └── scripts/                 # MCP clients
 │
-├── templates/
-├── scripts/
 └── docs/
 ```
 

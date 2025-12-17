@@ -11,9 +11,9 @@ import pytest
 
 # Setup paths
 PLUGIN_ROOT = Path(__file__).parent.parent.parent
-SKILLS_PLUGIN = PLUGIN_ROOT / "skills" / "jira-communication" / "scripts" / "skills_plugin"
+SCRIPTS_DIR = PLUGIN_ROOT / "skills" / "jira" / "scripts"
 AI_TOOL_BRIDGE = PLUGIN_ROOT.parent / "ai-tool-bridge" / "src"
-sys.path.insert(0, str(SKILLS_PLUGIN.parent))
+sys.path.insert(0, str(SCRIPTS_DIR))
 sys.path.insert(0, str(AI_TOOL_BRIDGE))
 
 
@@ -23,7 +23,7 @@ class TestJiraPluginStartup:
     @pytest.fixture
     def plugin(self):
         """Create a fresh JiraPlugin instance."""
-        from skills_plugin import JiraPlugin
+        from plugin import JiraPlugin
         return JiraPlugin()
 
     @pytest.mark.asyncio
@@ -50,7 +50,7 @@ class TestJiraPluginShutdown:
     @pytest.fixture
     def plugin(self):
         """Create a fresh JiraPlugin instance."""
-        from skills_plugin import JiraPlugin
+        from plugin import JiraPlugin
         return JiraPlugin()
 
     @pytest.mark.asyncio
@@ -81,7 +81,7 @@ class TestJiraPluginHealthCheck:
     @pytest.fixture
     def plugin(self):
         """Create a fresh JiraPlugin instance."""
-        from skills_plugin import JiraPlugin
+        from plugin import JiraPlugin
         return JiraPlugin()
 
     def test_health_check_not_connected(self, plugin):
@@ -128,7 +128,7 @@ class TestJiraConnector:
     @pytest.fixture
     def connector(self):
         """Create a fresh JiraConnector instance."""
-        from skills_plugin.connector import JiraConnector
+        from connector import JiraConnector
         return JiraConnector()
 
     def test_name_property(self, connector):
@@ -198,7 +198,7 @@ class TestJiraPluginProperties:
     @pytest.fixture
     def plugin(self):
         """Create a fresh JiraPlugin instance."""
-        from skills_plugin import JiraPlugin
+        from plugin import JiraPlugin
         return JiraPlugin()
 
     def test_name_property(self, plugin):
@@ -228,5 +228,5 @@ class TestJiraPluginProperties:
 
     def test_connector_property(self, plugin):
         """Plugin should expose connector."""
-        from skills_plugin.connector import JiraConnector
+        from connector import JiraConnector
         assert isinstance(plugin.connector, JiraConnector)

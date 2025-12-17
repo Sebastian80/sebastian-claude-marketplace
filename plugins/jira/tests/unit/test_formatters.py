@@ -9,12 +9,12 @@ import pytest
 
 # Setup paths
 PLUGIN_ROOT = Path(__file__).parent.parent.parent
-SKILLS_PLUGIN = PLUGIN_ROOT / "skills" / "jira-communication" / "scripts" / "skills_plugin"
+SCRIPTS_DIR = PLUGIN_ROOT / "skills" / "jira" / "scripts"
 AI_TOOL_BRIDGE = PLUGIN_ROOT.parent / "ai-tool-bridge" / "src"
-sys.path.insert(0, str(SKILLS_PLUGIN.parent))
+sys.path.insert(0, str(SCRIPTS_DIR))
 sys.path.insert(0, str(AI_TOOL_BRIDGE))
 
-from skills_plugin.formatters import (
+from formatters import (
     JiraIssueHumanFormatter,
     JiraIssueAIFormatter,
     JiraIssueMarkdownFormatter,
