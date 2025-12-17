@@ -57,6 +57,7 @@ class ToolRegistry:
         self._router = router
         self._formatter = formatter
         self._tools: dict[str, type[Tool]] = {}
+        self._fallback_paths: set[str] = set()  # Track registered fallback routes
 
     def register(
         self,
@@ -138,6 +139,56 @@ class ToolRegistry:
             self._router.delete(path, **route_kwargs)(endpoint)
         else:
             raise ValueError(f"Unsupported HTTP method: {method}")
+
+        # Register fallback error route for missing path parameters
+        self._register_fallback_route(path, method, tool_cls)
+
+    def _register_fallback_route(
+        self,
+        path: str,
+        method: str,
+        tool_cls: type[Tool],
+    ) -> None:
+        """Register fallback route that returns helpful error for missing path params.
+
+        When a tool has path parameters (e.g., /issue/{key}), this registers
+        a route for the base path (e.g., /issue) that returns a usage hint.
+        """
+        import re
+        from fastapi.responses import PlainTextResponse
+
+        # Find path parameters
+        param_matches = list(re.finditer(r"/\{(\w+)\}", path))
+        if not param_matches:
+            return  # No path parameters, no fallback needed
+
+        # Get the first path parameter (most common case)
+        first_match = param_matches[0]
+        param_name = first_match.group(1)
+        base_path = path[:first_match.start()]
+
+        # Skip if base path is empty or already registered
+        if not base_path or base_path in self._fallback_paths:
+            return
+
+        self._fallback_paths.add(base_path)
+
+        # Build usage hint from path
+        # /issue/{key} -> "issue <KEY>"
+        command = base_path.lstrip("/").replace("/", " ")
+
+        async def fallback_endpoint():
+            return PlainTextResponse(
+                f"Error: {param_name} required\n\n"
+                f"Usage: {command} <{param_name.upper()}>\n",
+                status_code=400,
+            )
+
+        # Register with same method as the main route
+        if method == "GET":
+            self._router.get(base_path, include_in_schema=False)(fallback_endpoint)
+        elif method == "POST":
+            self._router.post(base_path, include_in_schema=False)(fallback_endpoint)
 
     def _build_endpoint(
         self,

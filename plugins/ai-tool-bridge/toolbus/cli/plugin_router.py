@@ -64,9 +64,22 @@ def run_plugin_command(args: list[str]) -> int:
     plugin = args[0]
     remaining = args[1:]
 
-    # Handle --help / -h flag: convert to /plugin/help request
+    # Handle --help / -h flag anywhere: convert to /plugin/help/{command} request
     if not remaining or remaining == ["--help"] or remaining == ["-h"]:
         remaining = ["help"]
+    elif "--help" in remaining or "-h" in remaining:
+        # Extract command before --help and redirect to help endpoint
+        # e.g., "jira issue --help" -> "/jira/help/issue"
+        command_parts = []
+        for arg in remaining:
+            if arg in ("--help", "-h"):
+                break
+            if not arg.startswith("-"):
+                command_parts.append(arg)
+        if command_parts:
+            remaining = ["help", command_parts[0]]
+        else:
+            remaining = ["help"]
 
     # Separate path segments from options
     path_parts = []

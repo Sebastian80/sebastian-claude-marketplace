@@ -5,8 +5,10 @@ Provides:
 - Activity tracking for idle shutdown
 - Request logging
 - Error handling
+- Smart 404 handling with helpful messages
 """
 
+import re
 import time
 from collections.abc import Callable
 
@@ -15,7 +17,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
-__all__ = ["ActivityMiddleware", "ErrorMiddleware", "LoggingMiddleware"]
+__all__ = ["ActivityMiddleware", "ErrorMiddleware", "LoggingMiddleware", "setup_not_found_handler"]
 
 logger = structlog.get_logger(__name__)
 
