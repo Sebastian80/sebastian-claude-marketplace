@@ -87,6 +87,10 @@ def run_plugin_command(args: list[str]) -> int:
     plugin = args[0]
     remaining = args[1:]
 
+    # Handle --help / -h flag: convert to /plugin/help request
+    if not remaining or remaining == ["--help"] or remaining == ["-h"]:
+        remaining = ["help"]
+
     # Separate path segments from options
     path_parts = []
     params = {}

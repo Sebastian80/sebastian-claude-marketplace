@@ -129,6 +129,51 @@ def create_app(
     return app
 
 
+def _install_plugin_dependencies(manifest: Any) -> bool:
+    """Install plugin dependencies if not already installed.
+
+    Args:
+        manifest: Plugin manifest with dependencies list
+
+    Returns:
+        True if all dependencies satisfied, False on failure
+    """
+    if not manifest.dependencies:
+        return True
+
+    import subprocess
+    import sys
+
+    # Check which packages need installation
+    missing = []
+    for dep in manifest.dependencies:
+        # Extract package name (e.g., "atlassian-python-api>=4.0" -> "atlassian-python-api")
+        pkg_name = dep.split(">=")[0].split("==")[0].split("<")[0].split(">")[0].strip()
+        # Normalize: some packages use dashes but import with underscores
+        import_name = pkg_name.replace("-", "_")
+
+        try:
+            __import__(import_name)
+        except ImportError:
+            missing.append(dep)
+
+    if not missing:
+        return True
+
+    logger.info("installing_dependencies", plugin=manifest.name, packages=missing)
+
+    try:
+        subprocess.check_call(
+            [sys.executable, "-m", "pip", "install", "--quiet"] + missing,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+        return True
+    except subprocess.CalledProcessError as e:
+        logger.error("dependency_install_failed", plugin=manifest.name, error=str(e))
+        return False
+
+
 def _load_plugins_sync(config: BridgeConfig, notifier: Any) -> None:
     """Discover and load all plugins synchronously.
 
@@ -148,6 +193,11 @@ def _load_plugins_sync(config: BridgeConfig, notifier: Any) -> None:
 
     for manifest in manifests:
         try:
+            # Install dependencies before loading
+            if not _install_plugin_dependencies(manifest):
+                logger.warning("skipping_plugin", name=manifest.name, reason="dependency installation failed")
+                continue
+
             plugin = load_plugin(manifest, bridge_context)
 
             # Get CLI command name if declared

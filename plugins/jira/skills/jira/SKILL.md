@@ -60,11 +60,9 @@ jira create --project PROJ --type Task --summary "New task"
 jira search --jql "assignee = currentUser()"
 jira search --jql "project = PROJ" --maxResults 50
 
-# ─── Transitions & Workflow ───────────────────────────
-jira transitions PROJ-123              # List available
+# ─── Transitions ─────────────────────────────────────
+jira transitions PROJ-123              # List available transitions
 jira transition PROJ-123 --target "In Progress"
-jira workflows                         # List cached workflows
-jira workflow Story                    # Get workflow for issue type
 
 # ─── Comments ─────────────────────────────────────────
 jira comments PROJ-123                 # List comments
@@ -140,8 +138,10 @@ jira issue PROJ-123
 
 ### Search my open issues
 ```bash
-jira search --jql "assignee = currentUser() AND status != Done"
+jira search --jql 'assignee = currentUser() AND status != Done'
 ```
+
+**Note**: Use single quotes for JQL to avoid bash history expansion with `!`.
 
 ### Transition an issue
 ```bash
@@ -152,6 +152,20 @@ jira transition PROJ-123 --target "In Progress"
 ```bash
 jira comment PROJ-123 --text "Work completed"
 ```
+
+## Localized Jira Instances
+
+If your Jira displays German (or other language) status names, **always use English names in JQL**:
+
+| Display Name | JQL Value |
+|--------------|-----------|
+| Geschlossen | Closed |
+| Offen | Open |
+| In Arbeit | In Progress |
+| Erledigt | Resolved |
+| Zu erledigen | To Do |
+
+Example: Even if the UI shows "Geschlossen", use `status = Closed` in JQL.
 
 ## Related Skills
 

@@ -7,12 +7,42 @@ Endpoints:
 - GET /search - Search issues with JQL
 """
 
+import re
+
 from fastapi import APIRouter, Depends, Query
 
 from ..deps import jira
 from ..response import formatted, formatted_error
 
 router = APIRouter()
+
+
+def preprocess_jql(jql: str) -> str:
+    """Pre-process JQL to fix common issues.
+
+    Converts:
+    - `field != value` → `NOT field = value`
+    - `field \!= value` → `NOT field = value` (escaped variant)
+    - `field !~ value` → `NOT field ~ value`
+    - `field \!~ value` → `NOT field ~ value` (escaped variant)
+
+    This works around bash/Claude Code escaping and
+    library escaping bugs in atlassian-python-api.
+    """
+    # Match: field != or \!= value (with optional quotes around value)
+    # Captures: field name, value (including quotes if present)
+    jql = re.sub(
+        r'(\w+)\s*\\?!=\s*("(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'|\S+)',
+        r'NOT \1 = \2',
+        jql
+    )
+    # Match: field !~ or \!~ value
+    jql = re.sub(
+        r'(\w+)\s*\\?!~\s*("(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'|\S+)',
+        r'NOT \1 ~ \2',
+        jql
+    )
+    return jql
 
 
 @router.get("/search")
@@ -27,8 +57,11 @@ async def search(
     """Search issues using JQL query."""
     field_list = [f.strip() for f in fields.split(",")]
 
+    # Pre-process JQL to fix != and !~ operators
+    processed_jql = preprocess_jql(jql)
+
     try:
-        results = client.jql(jql, limit=max_results, start=start_at, fields=field_list)
+        results = client.jql(processed_jql, limit=max_results, start=start_at, fields=field_list)
         issues = results.get("issues", [])
 
         if format == "json":

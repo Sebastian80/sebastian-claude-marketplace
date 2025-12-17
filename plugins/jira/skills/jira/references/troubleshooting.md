@@ -97,6 +97,46 @@ tail -f ~/.local/share/ai-tool-bridge/logs/daemon.log
 curl -s "http://[::1]:9100/jira/user/me"
 ```
 
+## JQL Issues
+
+### "Value does not exist for field 'status'"
+
+**Cause**: Using localized status names (e.g., German "Geschlossen") in JQL.
+
+**Fix**: Always use **English status names** in JQL, regardless of your Jira's display language:
+
+| Display (German) | JQL Value (English) |
+|------------------|---------------------|
+| Geschlossen | Closed |
+| Offen | Open |
+| In Arbeit | In Progress |
+| Erledigt | Resolved |
+| Zu erledigen | To Do |
+
+```bash
+# Wrong (German display name)
+jira search --jql 'status = Geschlossen'
+
+# Correct (English JQL value)
+jira search --jql 'status = Closed'
+```
+
+### Bash history expansion with `!=`
+
+**Cause**: Bash interprets `!` in double quotes as history expansion.
+
+**Fix**: Use single quotes for JQL:
+
+```bash
+# Wrong (double quotes)
+jira search --jql "status != Done"
+
+# Correct (single quotes)
+jira search --jql 'status != Done'
+```
+
+The plugin also auto-converts `!=` to `NOT ... =` as a fallback.
+
 ## Auth Mode Detection
 
 The daemon auto-detects auth mode:
