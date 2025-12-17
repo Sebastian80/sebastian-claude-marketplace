@@ -50,6 +50,13 @@ def _load_module_isolated(manifest: "PluginManifest", module_path: str) -> Any:
         sys.path.insert(0, plugin_root)
         logger.debug("added_to_path", path=plugin_root, reason="isolated load")
 
+    # Also add the module's directory for sibling imports (e.g., serena_cli in scripts/)
+    parts = module_path.split(".")
+    module_dir = str(manifest.path / Path(*parts))
+    if module_dir not in sys.path:
+        sys.path.insert(0, module_dir)
+        logger.debug("added_to_path", path=module_dir, reason="module directory")
+
     # Convert module path to use our unique prefix
     # e.g., "scripts" -> "_bp_serena.scripts"
     unique_module = f"{prefix}.{module_path}"
