@@ -7,11 +7,11 @@ Plugins can declare CLI commands in their manifest:
         "script": "../cli/jira"
     }
 
-The script is installed to ~/.local/bin/<command> during plugin load.
+The script is symlinked to ~/.local/bin/<command> during plugin load.
+Symlinks are preferred over copies so changes are reflected immediately.
 """
 
-import shutil
-import stat
+import os
 from pathlib import Path
 
 import structlog
@@ -66,17 +66,19 @@ def install_cli(manifest: PluginManifest) -> bool:
     target = USER_BIN_DIR / command
 
     try:
-        # Copy script to target
-        shutil.copy2(source, target)
+        # Remove existing (symlink or file) if present
+        if target.exists() or target.is_symlink():
+            target.unlink()
 
-        # Make executable (rwxr-xr-x)
-        target.chmod(stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
+        # Create symlink to source script
+        os.symlink(source, target)
 
         logger.info(
             "cli_installed",
             plugin=manifest.name,
             command=command,
             target=str(target),
+            source=str(source),
         )
         return True
 
@@ -108,7 +110,7 @@ def uninstall_cli(manifest: PluginManifest) -> bool:
 
     target = USER_BIN_DIR / command
 
-    if not target.exists():
+    if not target.exists() and not target.is_symlink():
         logger.debug(
             "cli_not_installed",
             plugin=manifest.name,
@@ -117,7 +119,7 @@ def uninstall_cli(manifest: PluginManifest) -> bool:
         return False
 
     try:
-        target.unlink()
+        target.unlink(missing_ok=True)
         logger.info(
             "cli_uninstalled",
             plugin=manifest.name,

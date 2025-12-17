@@ -22,6 +22,7 @@ import structlog
 
 from .deps import sync_dependencies
 from .events import get_event_bus
+from .plugins.cli import install_cli, uninstall_cli
 from .plugins.discovery import (
     INSTALLED_PLUGINS_PATH,
     SETTINGS_PATH,
@@ -232,6 +233,9 @@ class HotReloader:
             cli_command = manifest.cli.get("command") if manifest.cli else None
             plugin_registry.register(plugin, cli_command=cli_command)
 
+            # Install CLI wrapper if declared
+            install_cli(manifest)
+
             # Mount routes
             self._mount_plugin_routes(manifest.name, plugin.router)
 
@@ -253,6 +257,9 @@ class HotReloader:
 
     async def _unload_plugin(self, name: str) -> None:
         """Unload a removed plugin."""
+        # Get manifest before cleanup (needed for CLI uninstall)
+        manifest = self._manifests.get(name)
+
         # Shutdown plugin
         await plugin_registry.shutdown(name)
 
@@ -261,6 +268,10 @@ class HotReloader:
 
         # Unregister
         plugin_registry.unregister(name)
+
+        # Uninstall CLI wrapper if present
+        if manifest:
+            uninstall_cli(manifest)
 
         # Clean up tracking
         self._tracker.remove(name)
@@ -312,6 +323,9 @@ class HotReloader:
 
             cli_command = manifest.cli.get("command") if manifest.cli else None
             plugin_registry.register(plugin, cli_command=cli_command)
+
+            # Install CLI wrapper if declared (symlink, so re-create is fine)
+            install_cli(manifest)
 
             # Mount new routes
             self._mount_plugin_routes(name, plugin.router)
