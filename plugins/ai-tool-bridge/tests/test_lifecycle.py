@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from ai_tool_bridge.lifecycle import IdleMonitor, PIDFile, SignalHandler
+from toolbus.lifecycle import IdleMonitor, PIDFile, SignalHandler
 
 
 class TestPIDFile:

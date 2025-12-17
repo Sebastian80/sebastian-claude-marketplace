@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_tool_bridge.connectors import ConnectorRegistry
+from toolbus.connectors import ConnectorRegistry
 
 
 class MockConnector:

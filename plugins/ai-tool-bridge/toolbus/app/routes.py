@@ -1,0 +1,172 @@
+"""
+Core Routes - Health, status, and management endpoints.
+
+These routes are always available regardless of loaded plugins.
+Plugin routes are mounted dynamically at /{plugin_name}/...
+"""
+
+from typing import Any
+
+from fastapi import APIRouter, HTTPException
+
+from ..connectors import connector_registry
+from ..plugins import plugin_registry
+
+__all__ = ["router"]
+
+router = APIRouter(tags=["core"])
+@router.get("/health")
+async def health() -> dict[str, str]:
+    """Basic health check.
+
+    Always returns 200 if the server is running.
+    Use /ready for deeper health checks.
+    """
+    return {"status": "ok"}
+@router.get("/ready")
+async def ready() -> dict[str, Any]:
+    """Readiness check including plugin health.
+
+    Returns 200 if all critical components are healthy.
+    Used by load balancers and orchestrators.
+    """
+    plugin_health = await plugin_registry.health_status()
+    connector_health = connector_registry.status()
+
+    all_healthy = all(
+        p.get("status") == "healthy" for p in plugin_health.values()
+    )
+
+    return {
+        "status": "ready" if all_healthy else "degraded",
+        "plugins": plugin_health,
+        "connectors": connector_health,
+    }
+@router.get("/status")
+async def status() -> dict[str, Any]:
+    """Detailed status information.
+
+    Returns comprehensive information about the bridge
+    and all loaded components.
+    """
+    from .. import __version__
+
+    return {
+        "version": __version__,
+        "plugins": plugin_registry.list_plugins(),
+        "connectors": connector_registry.status(),
+    }
+@router.get("/plugins")
+async def list_plugins() -> list[dict[str, Any]]:
+    """List all registered plugins."""
+    return plugin_registry.list_plugins()
+@router.get("/plugins/{name}")
+async def get_plugin(name: str) -> dict[str, Any]:
+    """Get details about a specific plugin."""
+    plugin = plugin_registry.get(name)
+    if not plugin:
+
+        raise HTTPException(status_code=404, detail=f"Plugin '{name}' not found")
+
+    health = await plugin_registry.health_check(name)
+
+    return {
+        "name": plugin.name,
+        "version": plugin.version,
+        "description": plugin.description,
+        "health": health,
+    }
+@router.get("/connectors")
+async def list_connectors() -> dict[str, Any]:
+    """List all registered connectors and their status."""
+    return connector_registry.status()
+@router.post("/connectors/{name}/reconnect")
+async def reconnect_connector(name: str) -> dict[str, Any]:
+    """Force reconnection of a specific connector."""
+    connector = connector_registry.get(name)
+    if not connector:
+
+        raise HTTPException(status_code=404, detail=f"Connector '{name}' not found")
+
+    await connector.disconnect()
+    await connector.connect()
+
+    return {"status": "reconnected", "connector": name}
+@router.get("/notifications")
+async def get_notifications_status() -> dict[str, Any]:
+    """Get notifications status."""
+    from ..lifecycle import get_notifier
+
+    notifier = get_notifier()
+    return {
+        "enabled": notifier.available if notifier else False,
+        "available": notifier is not None and notifier._notify_send is not None,
+    }
+@router.post("/notifications/{action}")
+async def toggle_notifications(action: str) -> dict[str, Any]:
+    """Enable or disable notifications.
+
+    Actions: enable, disable, test
+    """
+    from fastapi import HTTPException
+
+    from ..lifecycle import get_notifier
+
+    notifier = get_notifier()
+    if not notifier:
+        raise HTTPException(status_code=500, detail="Notifier not initialized")
+
+    if action == "enable":
+        notifier._enabled = True
+        return {"status": "enabled", "available": notifier.available}
+    elif action == "disable":
+        notifier._enabled = False
+        return {"status": "disabled"}
+    elif action == "test":
+        success = notifier.info("AI Tool Bridge", "Test notification")
+        return {"status": "sent" if success else "failed", "available": notifier.available}
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
+@router.post("/reload")
+async def reload_all_plugins() -> dict[str, Any]:
+    """Hot-reload all plugins.
+
+    Re-discovers plugins, syncs dependencies, and reloads changed plugins
+    without requiring a daemon restart.
+    """
+    from fastapi import HTTPException
+
+    from ..reload import get_hot_reloader
+
+    reloader = get_hot_reloader()
+    if not reloader:
+        raise HTTPException(status_code=500, detail="Hot reloader not initialized")
+
+    results = await reloader.reload_all()
+    return {
+        "status": "reloaded",
+        "plugins": results,
+    }
+@router.post("/reload/{name}")
+async def reload_plugin(name: str) -> dict[str, Any]:
+    """Hot-reload a specific plugin.
+
+    Args:
+        name: Plugin name to reload
+    """
+    from fastapi import HTTPException
+
+    from ..reload import get_hot_reloader
+
+    reloader = get_hot_reloader()
+    if not reloader:
+        raise HTTPException(status_code=500, detail="Hot reloader not initialized")
+
+    success = await reloader.reload_plugin(name)
+    if not success:
+        raise HTTPException(status_code=500, detail=f"Failed to reload plugin '{name}'")
+
+    return {
+        "status": "reloaded",
+        "plugin": name,
+    }

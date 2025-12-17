@@ -51,7 +51,7 @@ bridge stop
 ## Architecture
 
 ```
-ai_tool_bridge/
+toolbus/
 ├── contracts/        # Protocol definitions (interfaces)
 │   ├── connector.py  # ConnectorProtocol (lifecycle only)
 │   └── plugin.py     # PluginProtocol

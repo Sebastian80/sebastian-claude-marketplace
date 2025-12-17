@@ -12,7 +12,7 @@ Usage:
 
 from fastapi import HTTPException
 
-from ai_tool_bridge.connectors import connector_registry
+from toolbus.connectors import connector_registry
 
 
 def serena():

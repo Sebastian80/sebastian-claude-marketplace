@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from ai_tool_bridge.config import BridgeConfig
+from toolbus.config import BridgeConfig
 
 
 @pytest.fixture

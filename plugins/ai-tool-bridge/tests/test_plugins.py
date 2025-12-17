@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from ai_tool_bridge.plugins import (
+from toolbus.plugins import (
     PluginManifest,
     PluginRegistry,
     discover_plugins,

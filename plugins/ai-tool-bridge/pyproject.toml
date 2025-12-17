@@ -37,14 +37,14 @@ dev = [
 ]
 
 [project.scripts]
-bridge = "ai_tool_bridge.cli:main"
+bridge = "toolbus.cli:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/ai_tool_bridge"]
+packages = ["toolbus"]
 
 [tool.ruff]
 line-length = 100
