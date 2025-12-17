@@ -16,17 +16,19 @@ import uvicorn
 
 from ..app import create_app
 from ..config import BridgeConfig
+from ..deps import sync_dependencies
 from ..lifecycle import PIDFile, SignalHandler, send_signal
 
 logger = structlog.get_logger(__name__)
 
 
-def start_daemon(config: BridgeConfig, foreground: bool = False) -> int:
+def start_daemon(config: BridgeConfig, foreground: bool = False, skip_deps: bool = False) -> int:
     """Start the bridge daemon.
 
     Args:
         config: Bridge configuration
         foreground: If True, run in foreground (don't daemonize)
+        skip_deps: If True, skip dependency sync (used after fork)
 
     Returns:
         Exit code (0 for success)
@@ -38,6 +40,13 @@ def start_daemon(config: BridgeConfig, foreground: bool = False) -> int:
     if pid_file.is_running():
         print(f"Bridge is already running (PID {pid_file.read()})")
         return 1
+
+    # Sync dependencies before starting (only in parent process)
+    if not skip_deps:
+        print("Checking dependencies...", file=sys.stderr)
+        if not sync_dependencies(config):
+            print("Failed to sync dependencies. Check logs.", file=sys.stderr)
+            return 1
 
     if foreground:
         return _run_foreground(config, pid_file)

@@ -20,6 +20,7 @@ import time
 import httpx
 
 from ..config import BridgeConfig
+from ..deps import show_deps_status, sync_dependencies
 from .client import BridgeClient, print_error, print_status
 from .daemon import daemon_status, restart_daemon, start_daemon, stop_daemon
 
@@ -28,7 +29,7 @@ AUTO_START_TIMEOUT = 5.0  # max seconds to wait for daemon
 AUTO_START_POLL_INTERVAL = 0.1  # seconds between health polls
 
 # Built-in commands (not plugin names)
-BUILTIN_COMMANDS = {"start", "stop", "restart", "status", "health", "plugins", "reconnect", "notify"}
+BUILTIN_COMMANDS = {"start", "stop", "restart", "status", "health", "plugins", "reconnect", "notify", "deps"}
 
 
 def main(args: list[str] | None = None) -> int:
@@ -406,6 +407,16 @@ def create_parser() -> argparse.ArgumentParser:
         help="Notification action",
     )
 
+    # deps
+    deps_parser = subparsers.add_parser("deps", help="Manage plugin dependencies")
+    deps_parser.add_argument(
+        "action",
+        nargs="?",
+        default="status",
+        choices=["status", "sync", "force"],
+        help="Action: status (show deps), sync (install if changed), force (reinstall all)",
+    )
+
     return parser
 
 
@@ -427,6 +438,8 @@ def run_command(command: str, args: argparse.Namespace, config: BridgeConfig) ->
         return stop_daemon(config)
     elif command == "restart":
         return restart_daemon(config)
+    elif command == "deps":
+        return handle_deps_command(args.action, config)
 
     # Status check (works regardless of daemon state)
     if command == "status":
@@ -484,6 +497,51 @@ def run_command(command: str, args: argparse.Namespace, config: BridgeConfig) ->
                 result = client.notifications_action(args.action)
                 print(f"Notifications: {result.get('status', 'unknown')}")
                 return 0
+
+    return 0
+
+
+def handle_deps_command(action: str, config: BridgeConfig) -> int:
+    """Handle the deps subcommand.
+
+    Args:
+        action: One of 'status', 'sync', 'force'
+        config: Bridge configuration
+
+    Returns:
+        Exit code
+    """
+    if action == "status":
+        status = show_deps_status(config)
+        print("Plugin Dependencies")
+        print("=" * 40)
+        print(f"UV available: {'yes' if status['uv_available'] else 'NO - install with: curl -LsSf https://astral.sh/uv/install.sh | sh'}")
+        print(f"Venv:         {status.get('venv_path', 'unknown')} {'(exists)' if status['venv_exists'] else '(missing)'}")
+        print(f"In sync:      {'yes' if status['in_sync'] else 'NO - run: bridge deps sync'}")
+        print(f"Hash:         {status['current_hash']} {'(stored: ' + status['stored_hash'] + ')' if status['stored_hash'] else '(not stored)'}")
+        print()
+        print("Dependencies:")
+        for dep in status['dependencies']:
+            print(f"  - {dep}")
+        return 0
+
+    elif action == "sync":
+        print("Syncing dependencies...")
+        if sync_dependencies(config):
+            print("Dependencies in sync.")
+            return 0
+        else:
+            print_error("Failed to sync dependencies.")
+            return 1
+
+    elif action == "force":
+        print("Force reinstalling all dependencies...")
+        if sync_dependencies(config, force=True):
+            print("Dependencies reinstalled.")
+            return 0
+        else:
+            print_error("Failed to reinstall dependencies.")
+            return 1
 
     return 0
 
