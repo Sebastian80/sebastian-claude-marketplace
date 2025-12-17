@@ -39,8 +39,8 @@
     {
       "name": "jira",
       "description": "Comprehensive Jira integration with syntax validation, templates, and API operations for Cloud and Server/Data Center",
-      "version": "3.0.2",
-      "source": "./plugins/jira",
+      "version": "1.0.0",
+      "source": "github:Sebastian80/jira-claude-plugin",
       "category": "productivity"
     },
     {
