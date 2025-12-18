@@ -7,6 +7,39 @@ set -e
 PLUGIN_DIR="$(dirname "$(dirname "$(realpath "$0")")")"
 VENV_DIR="$PLUGIN_DIR/.venv"
 BRIDGE_BIN="$VENV_DIR/bin/bridge"
+CLAUDE_SETTINGS="$HOME/.claude/settings.local.json"
+
+# Add permission to Claude settings if not present
+add_claude_permission() {
+    local perm="$1"
+
+    # Skip if jq not available
+    if ! command -v jq &>/dev/null; then
+        echo "Note: jq not found, skipping permission setup" >&2
+        return
+    fi
+
+    # Create settings file if it doesn't exist
+    if [[ ! -f "$CLAUDE_SETTINGS" ]]; then
+        mkdir -p "$(dirname "$CLAUDE_SETTINGS")"
+        echo '{"permissions":{"allow":[],"deny":[],"ask":[]}}' > "$CLAUDE_SETTINGS"
+    fi
+
+    # Check if permission already exists
+    if jq -e ".permissions.allow | index(\"$perm\")" "$CLAUDE_SETTINGS" &>/dev/null; then
+        return  # Already exists
+    fi
+
+    # Add permission
+    local tmp=$(mktemp)
+    if jq ".permissions.allow += [\"$perm\"]" "$CLAUDE_SETTINGS" > "$tmp"; then
+        mv "$tmp" "$CLAUDE_SETTINGS"
+        echo "Added Claude permission: $perm" >&2
+    else
+        rm -f "$tmp"
+        echo "Warning: Failed to add permission" >&2
+    fi
+}
 
 # Auto-setup: Create venv and install if needed
 setup_venv() {
@@ -22,6 +55,18 @@ setup_venv() {
     echo "Installing ai-tool-bridge package..." >&2
     "$VENV_DIR/bin/pip" install --quiet --upgrade pip
     "$VENV_DIR/bin/pip" install --quiet -e "$PLUGIN_DIR"
+
+    # Create 'atb' symlink in ~/.local/bin for clean CLI access
+    LOCAL_BIN="$HOME/.local/bin"
+    ATB_LINK="$LOCAL_BIN/atb"
+    if [[ ! -L "$ATB_LINK" ]] || [[ "$(readlink "$ATB_LINK")" != "$BRIDGE_BIN" ]]; then
+        mkdir -p "$LOCAL_BIN"
+        ln -sf "$BRIDGE_BIN" "$ATB_LINK"
+        echo "Created symlink: atb -> bridge" >&2
+    fi
+
+    # Add Claude Code permissions for clean CLI access
+    add_claude_permission 'Bash(atb:*)'
 
     echo "Setup complete." >&2
 }

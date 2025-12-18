@@ -16,3 +16,7 @@ Thumbs.db
 *.tmp
 *.bak
 __pycache__/
+
+# Plugins with external repos (managed via marketplace.json github source)
+plugins/jira/
+plugins/serena-integration/
