@@ -1,8 +1,8 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "sebastian-marketplace",
-  "version": "1.0.0",
-  "description": "Sebastian's private marketplace for Claude Code skills, plugins, agents, and tooling",
+  "version": "2.0.0",
+  "description": "Sebastian's private marketplace for Claude Code plugins",
   "owner": {
     "name": "Sebastian",
     "email": "sebastian@example.com"
@@ -10,47 +10,32 @@
   "plugins": [
     {
       "name": "ai-tool-bridge",
-      "description": "Plugin-based daemon bridging AI agents to external services via unified HTTP API. Features auto-discovery, idle shutdown, and connector registry.",
+      "description": "Plugin-based daemon bridging AI agents to external services via unified HTTP API",
       "version": "1.0.0",
-      "source": "./plugins/ai-tool-bridge",
+      "source": {
+        "source": "github",
+        "repo": "Sebastian80/ai-tool-bridge-plugin"
+      },
       "category": "infrastructure"
     },
     {
-      "name": "test-plugin",
-      "description": "Example plugin demonstrating all component types (skills, agents, commands, hooks, MCP)",
-      "version": "1.0.0",
-      "source": "./plugins/test-plugin",
-      "category": "development"
-    },
-    {
       "name": "serena-integration",
-      "description": "Semantic code intelligence for PHP/YAML via LSP. Symbol search, references, refactoring, cross-session memory, project onboarding.",
+      "description": "Semantic code intelligence for PHP/YAML via LSP",
       "version": "1.0.0",
-      "source": "./plugins/serena-integration",
-      "category": "development"
-    },
-    {
-      "name": "jetbrains-integration",
-      "description": "PhpStorm/IntelliJ IDE integration via MCP. 20 IDE tools + 22 debugger tools with CLI wrappers.",
-      "version": "1.0.0",
-      "source": "./plugins/jetbrains-integration",
+      "source": {
+        "source": "github",
+        "repo": "Sebastian80/serena-claude-plugin"
+      },
       "category": "development"
     },
     {
       "name": "jira",
-      "description": "Comprehensive Jira integration with syntax validation, templates, and API operations for Cloud and Server/Data Center",
+      "description": "Comprehensive Jira integration with syntax validation, templates, and API operations",
       "version": "1.3.0",
       "source": {
         "source": "github",
         "repo": "Sebastian80/jira-claude-plugin"
       },
-      "category": "productivity"
-    },
-    {
-      "name": "confluence-integration",
-      "description": "Comprehensive Confluence integration with syntax validation, templates, and API operations for Cloud and Server/Data Center",
-      "version": "1.0.0",
-      "source": "./plugins/confluence-integration",
       "category": "productivity"
     }
   ]
