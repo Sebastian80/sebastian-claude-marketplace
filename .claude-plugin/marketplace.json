@@ -38,8 +38,8 @@
     },
     {
       "name": "jira",
-      "description": "Comprehensive Jira integration with syntax validation, templates, and API operations for Cloud and Server/Data Center",
-      "version": "1.0.0",
+      "description": "Jira integration for AI agents with token-efficient output, bulk fetch, linked issues, and comprehensive workflow automation",
+      "version": "1.2.1",
       "source": {
         "source": "github",
         "repo": "Sebastian80/jira-claude-plugin"
