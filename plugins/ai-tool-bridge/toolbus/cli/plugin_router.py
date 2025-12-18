@@ -37,6 +37,7 @@ CONNECTION_ERRORS = (
 _QUERY_ONLY_PARAMS = {
     "format", "expand", "fields", "maxResults", "startAt",
     "limit", "includeArchived", "jql", "query",
+    "include_links", "include-links", "keys",  # Jira-specific read params
 }
 
 
@@ -103,11 +104,12 @@ def run_plugin_command(args: list[str]) -> int:
             if "=" in arg_content:
                 # Handle --key=value format
                 key, value = arg_content.split("=", 1)
-                params[key] = value
+                # Convert hyphens to underscores (CLI convention -> Python/FastAPI convention)
+                params[key.replace("-", "_")] = value
                 i += 1
             else:
                 # Handle --key value or --flag format
-                key = arg_content
+                key = arg_content.replace("-", "_")  # Convert hyphens to underscores
                 if i + 1 < len(remaining) and not remaining[i + 1].startswith("-"):
                     params[key] = remaining[i + 1]
                     i += 2
