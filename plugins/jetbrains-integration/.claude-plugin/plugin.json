@@ -1,9 +1,0 @@
-{
-  "name": "jetbrains-integration",
-  "version": "1.0.0",
-  "description": "PhpStorm/IntelliJ IDE integration via MCP. 20 IDE tools + 22 debugger tools with CLI wrappers.",
-  "author": {
-    "name": "Sebastian"
-  },
-  "license": "MIT"
-}

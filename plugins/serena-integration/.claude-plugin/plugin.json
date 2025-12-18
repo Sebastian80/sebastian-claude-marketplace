@@ -1,9 +1,0 @@
-{
-  "name": "serena",
-  "version": "1.0.0",
-  "description": "Semantic code intelligence for 30+ languages via LSP. Symbol search, references, refactoring, cross-session memory, project onboarding.",
-  "author": {
-    "name": "Sebastian"
-  },
-  "license": "MIT"
-}

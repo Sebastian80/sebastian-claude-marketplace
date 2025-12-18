@@ -1,9 +1,0 @@
-{
-  "name": "confluence-integration",
-  "version": "1.0.0",
-  "description": "Comprehensive Confluence integration with syntax validation, templates, and API operations",
-  "author": {
-    "name": "Sebastian"
-  },
-  "license": "MIT"
-}

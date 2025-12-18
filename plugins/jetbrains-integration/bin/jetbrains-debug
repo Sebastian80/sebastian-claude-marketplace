@@ -1,6 +1,0 @@
-#!/bin/bash
-# JetBrains Debug CLI wrapper for Claude Code
-# Usage: jetbrains-debug <command> [args]
-
-PLUGIN_DIR="$(dirname "$(dirname "$(realpath "$0")")")"
-exec python3 "$PLUGIN_DIR/scripts/jetbrains-debug-cli" "$@"
