@@ -308,7 +308,10 @@ class TestToolEndpoints:
 
     def test_validation_error(self, client):
         response = client.get("/item/")  # Missing key
-        assert response.status_code in (404, 422)  # Either not found or validation error
+        # 400: Fallback route with helpful usage hint
+        # 404: Not found (no fallback registered)
+        # 422: Validation error
+        assert response.status_code in (400, 404, 422)
 
     def test_formatter_used(self, client):
         response = client.get("/item/{key}?key=TEST&format=human")
