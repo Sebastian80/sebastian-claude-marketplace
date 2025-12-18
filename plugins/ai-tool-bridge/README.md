@@ -48,6 +48,16 @@ bridge stop
 | `bridge connectors` | List connectors and circuit states |
 | `bridge reconnect NAME` | Force reconnect a connector |
 
+### Plugin Commands
+
+Plugins register CLI wrappers automatically. Help is available at any level:
+
+```bash
+bridge jira --help           # List all jira commands
+bridge jira issue --help     # Help for issue command
+jira issue --help            # Same (via CLI wrapper)
+```
+
 ## Architecture
 
 ```
@@ -213,6 +223,39 @@ class MyPlugin:
 ```
 
 The bridge only manages connector lifecycle (connect/disconnect all on startup/shutdown). Transport-specific methods (HTTP, MCP, CLI) are implemented by plugins.
+
+### Tools Framework
+
+The `toolbus.tools` module provides a Pydantic-based abstraction for defining plugin tools:
+
+```python
+from pydantic import Field
+from toolbus.tools import Tool, ToolContext, ToolResult, register_tools
+
+class GetIssue(Tool):
+    """Get issue by key."""
+    key: str = Field(..., description="Issue key like PROJ-123")
+    format: str = Field("ai", description="Output format")
+
+    class Meta:
+        method = "GET"
+        path = "/issue/{key}"
+        tags = ["issues"]
+
+    async def execute(self, ctx: ToolContext) -> Any:
+        issue = ctx.client.issue(self.key)
+        return ctx.format(issue, self.format, "issue")
+
+# Register in plugin router
+router = APIRouter()
+register_tools(router, [GetIssue], Depends(client), formatter=formatted)
+```
+
+Features:
+- Auto-generates FastAPI routes with OpenAPI documentation
+- Path parameters extracted from `{placeholder}` syntax
+- Automatic fallback routes for missing required parameters
+- Subcommand help support (`plugin command --help`)
 
 ## API Endpoints
 

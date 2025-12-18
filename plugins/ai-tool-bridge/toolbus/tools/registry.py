@@ -152,7 +152,17 @@ class ToolRegistry:
         """Register fallback route that returns helpful error for missing path params.
 
         When a tool has path parameters (e.g., /issue/{key}), this registers
-        a route for the base path (e.g., /issue) that returns a usage hint.
+        a route for the base path (e.g., /issue) that returns a usage hint
+        instead of a generic 404 "Not Found" error.
+
+        Args:
+            path: Full route path including parameter placeholders (e.g., "/issue/{key}")
+            method: HTTP method (GET, POST, etc.)
+            tool_cls: Tool class (used for future extension, currently unused)
+
+        Example:
+            Tool with path="/issue/{key}" registers fallback at "/issue"
+            that returns: "Error: key required\\n\\nUsage: issue <KEY>"
         """
         import re
         from fastapi.responses import PlainTextResponse
