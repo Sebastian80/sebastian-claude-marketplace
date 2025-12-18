@@ -20,11 +20,12 @@ Example:
 """
 
 import inspect
+import re
 from collections.abc import Callable
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Path, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import ValidationError
 from pydantic.fields import FieldInfo
 
@@ -141,14 +142,9 @@ class ToolRegistry:
             raise ValueError(f"Unsupported HTTP method: {method}")
 
         # Register fallback error route for missing path parameters
-        self._register_fallback_route(path, method, tool_cls)
+        self._register_fallback_route(path, method)
 
-    def _register_fallback_route(
-        self,
-        path: str,
-        method: str,
-        tool_cls: type[Tool],
-    ) -> None:
+    def _register_fallback_route(self, path: str, method: str) -> None:
         """Register fallback route that returns helpful error for missing path params.
 
         When a tool has path parameters (e.g., /issue/{key}), this registers
@@ -157,16 +153,12 @@ class ToolRegistry:
 
         Args:
             path: Full route path including parameter placeholders (e.g., "/issue/{key}")
-            method: HTTP method (GET, POST, etc.)
-            tool_cls: Tool class (used for future extension, currently unused)
+            method: HTTP method (GET, POST, PUT, PATCH, DELETE)
 
         Example:
             Tool with path="/issue/{key}" registers fallback at "/issue"
             that returns: "Error: key required\\n\\nUsage: issue <KEY>"
         """
-        import re
-        from fastapi.responses import PlainTextResponse
-
         # Find path parameters
         param_matches = list(re.finditer(r"/\{(\w+)\}", path))
         if not param_matches:
@@ -187,18 +179,23 @@ class ToolRegistry:
         # /issue/{key} -> "issue <KEY>"
         command = base_path.lstrip("/").replace("/", " ")
 
-        async def fallback_endpoint():
+        async def fallback_endpoint() -> PlainTextResponse:
             return PlainTextResponse(
                 f"Error: {param_name} required\n\n"
                 f"Usage: {command} <{param_name.upper()}>\n",
                 status_code=400,
             )
 
-        # Register with same method as the main route
-        if method == "GET":
-            self._router.get(base_path, include_in_schema=False)(fallback_endpoint)
-        elif method == "POST":
-            self._router.post(base_path, include_in_schema=False)(fallback_endpoint)
+        # Register fallback for all common HTTP methods
+        route_methods = {
+            "GET": self._router.get,
+            "POST": self._router.post,
+            "PUT": self._router.put,
+            "PATCH": self._router.patch,
+            "DELETE": self._router.delete,
+        }
+        if method in route_methods:
+            route_methods[method](base_path, include_in_schema=False)(fallback_endpoint)
 
     def _build_endpoint(
         self,
@@ -220,7 +217,6 @@ class ToolRegistry:
 
         # Determine which fields are path params (appear in {})
         path_params = set()
-        import re
         for match in re.finditer(r"\{(\w+)\}", path):
             path_params.add(match.group(1))
 
