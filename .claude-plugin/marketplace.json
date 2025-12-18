@@ -24,7 +24,7 @@
     },
     {
       "name": "serena-integration",
-      "description": "Semantic code intelligence for PHP/YAML via LSP. Symbol search, references, refactoring, cross-session memory, project onboarding.",
+      "description": "Semantic PHP code navigation via LSP. Symbol search, references, refactoring, cross-session memory.",
       "version": "1.1.0",
       "source": {
         "source": "github",
