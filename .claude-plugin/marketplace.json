@@ -1,22 +1,13 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "sebastian-marketplace",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Sebastian's private marketplace for Claude Code plugins",
   "owner": {
     "name": "Sebastian",
     "email": "sebastian@example.com"
   },
   "plugins": [
-    {
-      "name": "ai-tool-bridge",
-      "description": "Plugin-based daemon bridging AI agents to external services via unified HTTP API",
-      "source": {
-        "source": "url",
-        "url": "https://github.com/Sebastian80/ai-tool-bridge-plugin.git"
-      },
-      "category": "infrastructure"
-    },
     {
       "name": "serena-integration",
       "description": "Semantic code intelligence for PHP/YAML via LSP",
