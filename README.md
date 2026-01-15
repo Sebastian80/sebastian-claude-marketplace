@@ -8,6 +8,8 @@ Private marketplace for Claude Code plugins.
 |--------|-------------|---------|
 | **serena-integration** | Semantic PHP code navigation via Serena LSP | 2.0.0 |
 | **jira** | Jira issue management CLI | 2.0.0 |
+| **code-nav** | Direct CLI for JetBrains Serena Plugin | 1.0.0 |
+| **tmux-cli** | CLI for communicating with other agents in tmux panes | 1.0.0 |
 
 ## Installation
 
