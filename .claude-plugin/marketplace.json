@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "sebastian-marketplace",
-  "version": "2.6.0",
+  "version": "2.7.0",
   "description": "Sebastian's private marketplace for Claude Code plugins",
   "owner": {
     "name": "Sebastian",
@@ -50,6 +50,33 @@
       "source": {
         "source": "url",
         "url": "https://github.com/Sebastian80/agent-browser-claude-plugin.git"
+      },
+      "category": "development"
+    },
+    {
+      "name": "cc-docs",
+      "description": "Claude Code documentation expert - searches official docs and local changelog",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/Sebastian80/cc-docs-claude-plugin.git"
+      },
+      "category": "productivity"
+    },
+    {
+      "name": "frontend-test",
+      "description": "Frontend testing with logged-in browser sessions via chrome-in-chrome",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/Sebastian80/frontend-test-claude-plugin.git"
+      },
+      "category": "development"
+    },
+    {
+      "name": "validate-frontmatter",
+      "description": "Validate YAML frontmatter in Claude Code skills, agents, and commands",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/Sebastian80/validate-frontmatter-claude-plugin.git"
       },
       "category": "development"
     }

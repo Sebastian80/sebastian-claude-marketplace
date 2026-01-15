@@ -11,6 +11,9 @@ Private marketplace for Claude Code plugins.
 | **code-nav** | Direct CLI for JetBrains Serena Plugin | 1.0.0 |
 | **tmux-cli** | CLI for communicating with other agents in tmux panes | 1.0.0 |
 | **agent-browser** | Browser automation for web testing and screenshots | 1.0.0 |
+| **cc-docs** | Claude Code documentation expert | 1.0.0 |
+| **frontend-test** | Frontend testing with logged-in browser sessions | 1.0.0 |
+| **validate-frontmatter** | Validate YAML frontmatter in Claude Code components | 1.0.0 |
 
 ## Installation
 
