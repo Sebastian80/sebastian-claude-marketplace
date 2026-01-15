@@ -27,8 +27,8 @@
       "category": "productivity"
     },
     {
-      "name": "phpstorm-nav",
-      "description": "Direct CLI for JetBrains Serena Plugin - PHP navigation without MCP overhead",
+      "name": "code-nav",
+      "description": "Direct CLI for JetBrains Serena Plugin - code navigation without MCP overhead",
       "source": {
         "source": "url",
         "url": "https://github.com/Sebastian80/phpstorm-nav-claude-plugin.git"
