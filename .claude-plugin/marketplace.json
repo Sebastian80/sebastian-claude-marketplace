@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "sebastian-marketplace",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "Sebastian's private marketplace for Claude Code plugins",
   "owner": {
     "name": "Sebastian",
