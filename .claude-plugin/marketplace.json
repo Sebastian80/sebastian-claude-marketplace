@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "sebastian-marketplace",
-  "version": "2.5.0",
+  "version": "2.6.0",
   "description": "Sebastian's private marketplace for Claude Code plugins",
   "owner": {
     "name": "Sebastian",
@@ -41,6 +41,15 @@
       "source": {
         "source": "url",
         "url": "https://github.com/Sebastian80/tmux-cli-claude-plugin.git"
+      },
+      "category": "development"
+    },
+    {
+      "name": "agent-browser",
+      "description": "Browser automation for web testing, form filling, screenshots, and data extraction",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/Sebastian80/agent-browser-claude-plugin.git"
       },
       "category": "development"
     }
