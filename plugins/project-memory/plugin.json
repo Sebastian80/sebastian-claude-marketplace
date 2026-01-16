@@ -1,0 +1,9 @@
+{
+  "name": "project-memory-integration",
+  "version": "1.0.0",
+  "description": "Project-scoped memory for AI coding assistants",
+  "author": { "name": "Sebastian" },
+  "license": "MIT",
+  "repository": "https://github.com/Sebastian80/project-memory",
+  "keywords": ["memory", "session", "context", "persistence"]
+}

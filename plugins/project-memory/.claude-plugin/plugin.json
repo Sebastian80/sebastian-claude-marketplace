@@ -1,0 +1,7 @@
+{
+  "name": "project-memory-integration",
+  "version": "1.0.0",
+  "description": "Project-scoped memory for AI coding assistants",
+  "author": { "name": "Sebastian" },
+  "license": "MIT"
+}
