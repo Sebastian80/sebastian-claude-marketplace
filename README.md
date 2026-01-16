@@ -14,6 +14,7 @@ Private marketplace for Claude Code plugins.
 | **cc-docs** | Claude Code documentation expert | 1.0.0 |
 | **frontend-test** | Frontend testing with logged-in browser sessions | 1.0.0 |
 | **validate-frontmatter** | Validate YAML frontmatter in Claude Code components | 1.0.0 |
+| **project-memory** | Project-scoped memory with pm CLI | 1.0.0 |
 
 ## Installation
 
